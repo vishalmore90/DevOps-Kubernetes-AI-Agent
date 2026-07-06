@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-kubernetes-agent-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ${KUBECONFIG_PATH:-~/.kube/config}:/root/.kube/config:ro
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL}
+      - KUBECONFIG=/root/.kube/config
+      - KUBECONFIG_PATH=${KUBECONFIG_PATH}
+    command: >
+      sh -c "PORT=\$$(grep -oE 'https://127.0.0.1:[0-9]+' /root/.kube/config | cut -d: -f3) && 
+             echo \"Starting socat port-forwarder for Kubernetes on port $$PORT...\" && 
+             socat TCP-LISTEN:$$PORT,fork TCP:host.docker.internal:$$PORT & 
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-kubernetes-agent-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    restart: unless-stopped

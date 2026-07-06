@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oomkilled-test
+  namespace: default
+  labels:
+    app: oomkilled-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oomkilled-test
+  template:
+    metadata:
+      labels:
+        app: oomkilled-test
+    spec:
+      containers:
+      - name: app
+        image: alpine:latest
+        command: ["sh", "-c", "x='a'; while true; do x=\"$x$x\"; done"]
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "16Mi"
+          requests:
+            cpu: "50m"
+            memory: "8Mi"

@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crashloop-test
+  namespace: default
+  labels:
+    app: crashloop-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crashloop-test
+  template:
+    metadata:
+      labels:
+        app: crashloop-test
+    spec:
+      containers:
+      - name: app
+        image: alpine:latest
+        command: ["sh", "-c", "if [ -z \"$DB_PASSWORD\" ]; then echo \"[ERROR] DB_PASSWORD env variable is missing! Exiting.\"; exit 1; fi"]
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "64Mi"
+          requests:
+            cpu: "50m"
+            memory: "32Mi"

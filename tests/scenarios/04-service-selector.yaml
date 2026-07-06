@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: selector-mismatch-test
+  namespace: default
+  labels:
+    app: frontend-actual
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend-actual
+  template:
+    metadata:
+      labels:
+        app: frontend-actual
+    spec:
+      containers:
+      - name: app
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "64Mi"
+          requests:
+            cpu: "50m"
+            memory: "32Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: selector-mismatch-svc
+  namespace: default
+spec:
+  selector:
+    app: frontend-mismatch
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
