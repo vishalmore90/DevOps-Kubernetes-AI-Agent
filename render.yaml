@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: devops-kubernetes-ai-agent-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: openai/gpt-4o
+      - key: INSFORGE_API_BASE_URL
+        value: https://xq2heej9.ap-southeast.insforge.app
+      - key: INSFORGE_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: KUBECONFIG_DATA
+        sync: false

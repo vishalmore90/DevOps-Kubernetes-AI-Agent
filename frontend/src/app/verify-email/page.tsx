@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { insforge } from '../../lib/insforge';
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
@@ -44,8 +44,8 @@ export default function VerifyEmailPage() {
           router.push('/');
         }, 1500);
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'An unexpected error occurred during verification.');
+    } catch (err: unknown) {
+      setErrorMsg((err as Error).message || 'An unexpected error occurred during verification.');
     } finally {
       setLoading(false);
     }
@@ -61,7 +61,7 @@ export default function VerifyEmailPage() {
     setResending(true);
 
     try {
-      const { data, error } = await insforge.auth.resendVerificationEmail({
+      const { error } = await insforge.auth.resendVerificationEmail({
         email,
       });
 
@@ -70,8 +70,8 @@ export default function VerifyEmailPage() {
       } else {
         setSuccessMsg('A new 6-digit verification code has been sent to your email.');
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'An unexpected error occurred.');
+    } catch (err: unknown) {
+      setErrorMsg((err as Error).message || 'An unexpected error occurred.');
     } finally {
       setResending(false);
     }
@@ -161,5 +161,17 @@ export default function VerifyEmailPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+        <div className="text-slate-400 text-sm">Loading verification...</div>
+      </main>
+    }>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }

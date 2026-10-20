@@ -16,8 +16,15 @@ interface HistoryItem {
   created_at: string;
 }
 
+interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+  emailVerified?: boolean;
+}
+
 export default function Home() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -59,17 +66,17 @@ export default function Home() {
 
   // Check auth session on mount
   useEffect(() => {
-    insforge.auth.getCurrentUser().then(({ data, error }) => {
+    insforge.auth.getCurrentUser().then(({ data }) => {
       if (data?.user) {
         if (!data.user.emailVerified) {
-          router.push(`/verify-email?email=${encodeURIComponent(data.user.email)}`);
+          router.push(`/verify-email?email=${encodeURIComponent(data.user.email || '')}`);
         } else {
-          setUser(data.user);
+          setUser(data.user as unknown as AuthUser);
         }
       }
       setAuthLoading(false);
     });
-  }, []);
+  }, [router]);
 
   // Fetch contexts on mount/user state change
   useEffect(() => {
@@ -105,7 +112,7 @@ export default function Home() {
   // Fetch History once authenticated
   const fetchHistory = async (userId: string) => {
     try {
-      const { data, error } = await insforge.database
+      const { data } = await insforge.database
         .from('investigations')
         .select()
         .eq('user_id', userId)
@@ -150,9 +157,9 @@ export default function Home() {
         console.log(`Subscribed to realtime channel: ${channelName}`);
         
         // Listen for progress changes
-        insforge.realtime.on('progress', (message: any) => {
-          const step = message.step;
-          const status = message.status; // 'active' or 'completed'
+        insforge.realtime.on('progress', (message: { step?: string; status?: string; [key: string]: unknown }) => {
+          const step = message.step as string | undefined;
+          const status = message.status as string | undefined; // 'active' or 'completed'
           
           setProgressSteps(prev => {
             const updated = { ...prev };
@@ -173,7 +180,7 @@ export default function Home() {
                 "AI Reasoning",
                 "Root Cause Found"
               ];
-              const currentIndex = stepsOrder.indexOf(step);
+              const currentIndex = step ? stepsOrder.indexOf(step) : -1;
               if (currentIndex !== -1) {
                 stepsOrder.forEach((name, idx) => {
                   if (idx < currentIndex) {
@@ -231,13 +238,13 @@ export default function Home() {
 
           await insforge.database
             .from('investigations')
-            .insert({
+            .insert([{
               user_id: user.id,
               root_cause: res.diagnosis.root_cause,
               namespace: namespace,
               confidence: res.diagnosis.confidence,
               status: status
-            });
+            }]);
             
           // Refresh list
           fetchHistory(user.id);
@@ -674,7 +681,7 @@ export default function Home() {
           {mutationError && (
             <div className="bg-red-950/20 border border-red-900/35 rounded-3xl p-6 text-center shadow-lg">
               {(() => {
-                const err = mutationError as any;
+                const err = mutationError as { response?: { data?: { detail?: string } }; message?: string };
                 const detail = err.response?.data?.detail || err.message || String(err);
                 if (detail.includes("Unable to connect") || detail.includes("connection to the server") || detail.includes("connection refused")) {
                   return (

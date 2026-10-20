@@ -14,6 +14,43 @@ logger.add(
     level="INFO"
 )
 
+def init_kubeconfig():
+    import os
+    import base64
+    from pathlib import Path
+
+    # 1. Handle inline KUBECONFIG_DATA / KUBECONFIG_CONTENT (base64 or raw yaml) for cloud deployments (e.g., Render)
+    kubeconfig_data = os.getenv("KUBECONFIG_DATA") or os.getenv("KUBECONFIG_CONTENT")
+    if kubeconfig_data:
+        try:
+            try:
+                decoded = base64.b64decode(kubeconfig_data).decode("utf-8")
+                if "apiVersion" in decoded:
+                    kubeconfig_data = decoded
+            except Exception:
+                pass
+            
+            kube_dir = Path(os.path.expanduser("~/.kube"))
+            kube_dir.mkdir(parents=True, exist_ok=True)
+            kube_file = kube_dir / "config"
+            kube_file.write_text(kubeconfig_data, encoding="utf-8")
+            os.environ["KUBECONFIG"] = str(kube_file)
+            logger.info(f"Initialized KUBECONFIG from environment data to {kube_file}")
+            return
+        except Exception as e:
+            logger.warning(f"Could not parse/write KUBECONFIG_DATA: {e}")
+
+    # 2. Check for configured file path
+    if settings.KUBECONFIG_PATH and not os.getenv("KUBECONFIG"):
+        expanded = os.path.expanduser(settings.KUBECONFIG_PATH)
+        if os.path.exists(expanded):
+            os.environ["KUBECONFIG"] = expanded
+            logger.info(f"Configured KUBECONFIG={expanded}")
+        else:
+            logger.warning(f"Kubeconfig path not found at {expanded}. Cluster operations will require a valid kubeconfig.")
+
+init_kubeconfig()
+
 app = FastAPI(
     title="AI Kubernetes Troubleshooting Agent Backend",
     version="0.1.0",
