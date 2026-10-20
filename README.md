@@ -1,151 +1,228 @@
+<div align="center">
+
 # DevOps Kubernetes AI Troubleshooting Agent
 
-An automated Site Reliability Engineering (SRE) and cluster diagnostics platform. It connects to Kubernetes clusters, gathers multi-layer diagnostic telemetry (pod status, container error logs, cluster events, deployment controllers, and service networking), and executes root-cause analysis with LLMs through OpenRouter. Investigation history and real-time status telemetry are persisted and published through InsForge.
+**Autonomous SRE Investigation, Root Cause Analysis, and Cluster Diagnostics**
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-14.2-black.svg?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-Compatible-326CE5.svg?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Backend](https://img.shields.io/badge/InsForge-PostgreSQL%20%7C%20Realtime-0284C7.svg)](https://insforge.dev)
+
+</div>
 
 ---
 
-## Architecture Overview
+## Executive Summary
 
-```text
-+-------------------------------------------------------------------------+
-|                           Kubernetes Cluster                            |
-|             Pods | Deployments | Services | Events | Logs               |
-+-------------------------------------------------------------------------+
-                                    |
-                                    | kubectl CLI / Cluster API
-                                    v
-+-------------------------------------------------------------------------+
-|                      Diagnostic Collector Layer                         |
-|                                                                         |
-|  1. Pod Inspector         - Detect CrashLoopBackOff, OOMKilled, Error   |
-|  2. Logs Collector        - Extract tail logs and container failures    |
-|  3. Events Analyzer       - Parse scheduling, node, and image warnings  |
-|  4. Deployment Inspector  - Audit replicas, rollout state, and probes   |
-|  5. Network Inspector     - Validate service selectors and endpoints    |
-+-------------------------------------------------------------------------+
-                                    |
-                                    | Structured Diagnostic Telemetry
-                                    v
-+-------------------------------------------------------------------------+
-|                  FastAPI Orchestration & Security Layer                 |
-|                                                                         |
-|  - Rate Limiting (120 req/min per IP sliding window)                    |
-|  - Security Headers (HSTS, X-Frame-Options, nosniff, XSS protection)    |
-|  - Input Validation & Context Sanitization (Regex pattern filtering)    |
-|  - Dynamic Kubeconfig Bootstrapping (KUBECONFIG_DATA / Secret Files)   |
-+-------------------------------------------------------------------------+
-            |                                           |
-            | Reasoning Request                         | Realtime Events & CRUD
-            v                                           v
-+-----------------------------+           +-------------------------------+
-|     AI Reasoning Engine     |           |     InsForge Backend (BaaS)   |
-|                             |           |                               |
-|  - OpenRouter API Gateway   |           |  - Email/Password + OTP Auth  |
-|  - Models: GPT-4o, Claude   |           |  - Postgres RLS Investigations|
-|  - Root-cause identification|           |  - Socket.IO Realtime Pub/Sub |
-|  - Actionable CLI fixes     |           |  - Database Trigger Pipeline  |
-+-----------------------------+           +-------------------------------+
-                                                        |
-                                                        | Realtime Stream & REST
-                                                        v
-+-------------------------------------------------------------------------+
-|                       Next.js Frontend Console                          |
-|                                                                         |
-|  - High-contrast Obsidian Design System (Inter + Monospace)             |
-|  - Target Cluster Context Switcher & Health Indicator                   |
-|  - Realtime Milestone Progress Tracker (Live Socket.IO)                 |
-|  - Root Cause Analysis, Severity, Remediation Code Blocks               |
-|  - Diagnostic Evidence Inspector (Pods, Deployments, Events, Network)   |
-|  - InsForge Row-Level Security Protected Incident History               |
-|  - Privacy Policy (/privacy) & Terms of Service (/terms)                |
-+-------------------------------------------------------------------------+
+Kubernetes operational debugging requires SREs and platform engineers to manually correlate disparate data points across pod statuses, container error logs, cluster events, controller rollout histories, and service endpoint mappings. During production incidents, this manual correlation increases Mean Time to Resolution (MTTR).
+
+The **DevOps Kubernetes AI Troubleshooting Agent** automates this investigative pipeline. It programmatically connects to configured Kubernetes contexts, extracts telemetry across five operational layers, filters sensitive credentials, correlates signals using Large Language Models via OpenRouter, and delivers an incident root-cause diagnosis paired with exact remediation commands.
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Cluster["Kubernetes Infrastructure"]
+        Pods["Pods & Containers"]
+        Logs["Container Stdout/Stderr"]
+        Events["Cluster Event Stream"]
+        Deploys["Deployment Controllers"]
+        Network["Services & Endpoints"]
+    end
+
+    subgraph Collector["Diagnostic Telemetry Layer"]
+        PI["Pod Inspector"]
+        LC["Logs Collector"]
+        EA["Events Analyzer"]
+        DI["Deployment Inspector"]
+        NI["Network Inspector"]
+    end
+
+    subgraph Backend["FastAPI Orchestration & Security Layer"]
+        RL["IP Rate Limiter (120 req/min)"]
+        SH["Security Headers & Sanitizer"]
+        KC["Kubeconfig Loader"]
+        Router["Investigation Router"]
+    end
+
+    subgraph CloudBaaS["InsForge Platform"]
+        Auth["Authentication & OTP Verification"]
+        DB[("PostgreSQL with RLS")]
+        RT["Realtime Socket.IO Stream"]
+    end
+
+    subgraph LLM["AI Reasoning Gateway"]
+        OR["OpenRouter API"]
+        Model["GPT-4o / Claude / Llama-3"]
+    end
+
+    subgraph UI["Next.js Management Console"]
+        Dash["Investigation Dashboard"]
+        Milestones["Realtime Progress Tracker"]
+        Reports["Diagnostic Evidence Viewer"]
+    end
+
+    Pods --> PI
+    Logs --> LC
+    Events --> EA
+    Deploys --> DI
+    Network --> NI
+
+    PI & LC & EA & DI & NI --> KC --> Router
+    Router --> SH --> RL
+    Router --> LLM
+    Router --> RT
+    Router --> DB
+
+    UI --> Auth
+    UI --> Router
+    RT --> Milestones
+    DB --> Reports
 ```
 
 ---
 
-## Features
+## Core Capabilities
 
-### 1. Automated Kubernetes Diagnostics
-- **CrashLoopBackOff**: Identifies missing environment variables, config maps, database connectivity errors, and exit codes.
-- **ImagePullBackOff & ErrImagePull**: Detects malformed image repositories, invalid tags, and registry authentication issues.
-- **OOMKilled**: Flags memory limit violations and runaway container allocations.
-- **Pending & Scheduling Failures**: Analyzes insufficient CPU/memory, node taints, tolerations, and affinity mismatches.
-- **Deployment Rollout Stalls**: Surfaces failing liveness and readiness probes, replica mismatches, and failed update strategies.
-- **Network & Service Misconfigurations**: Detects selector mismatches where services point to zero endpoints.
+### 1. Multi-Layer Telemetry Extraction
+The collector layer queries the cluster through the standard Kubernetes API via `kubectl`:
+- **Pod Inspector**: Audits pod lifecycles, exit codes, container restart counters, and failure phases (`CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, `ErrImagePull`, `Pending`, `Evicted`).
+- **Logs Collector**: Extracts tail logs from failing container instances and filters common stack traces and operational exceptions.
+- **Events Analyzer**: Captures cluster warning events within the target namespace to detect scheduling failures, node pressure, and volume mount timeouts.
+- **Deployment Inspector**: Evaluates desired versus ready replica counts, update rollout progression, and probe failures (liveness, readiness, startup).
+- **Network Inspector**: Evaluates service selector definitions against target pod labels to detect unrouted or dead service endpoints.
 
-### 2. SRE Root Cause Reasoning
-- Normalizes telemetry across pods, logs, events, and services into a structured prompt.
-- Calculates diagnosis confidence scores (0 to 100%).
-- Provides copyable `kubectl` commands and manifest fixes.
+### 2. SRE Root Cause Reasoning Engine
+- Aggregates multi-source diagnostics into an optimized prompt payload.
+- Computes diagnostic confidence percentages.
+- Outputs structured technical explanations, affected components, and copy-ready `kubectl` remediation commands.
 
-### 3. InsForge Backend Integration
-- **Authentication**: Email/password authentication with 6-digit OTP verification.
-- **Row-Level Security (RLS)**: Enforces `auth.uid() = user_id` on the PostgreSQL `investigations` table.
-- **Realtime Milestone Streaming**: Emits live progress milestones (`Checking Pods` -> `Reading Logs` -> `Analyzing Events` -> `AI Reasoning` -> `Root Cause Found`) over Socket.IO channels (`investigation:<user_id>`).
+### 3. Enterprise BaaS Integration (InsForge)
+- **Identity & Access Management**: Secure email and password authentication with a mandatory 6-digit OTP verification workflow.
+- **Row-Level Security (RLS)**: Enforces cryptographic user isolation on the PostgreSQL `investigations` table (`auth.uid() = user_id`).
+- **Realtime Telemetry Streaming**: Uses PostgreSQL notification triggers to publish milestone events (`Checking Pods` -> `Reading Logs` -> `Analyzing Events` -> `AI Reasoning` -> `Root Cause Found`) over dedicated Socket.IO channels (`investigation:<user_id>`).
 
-### 4. Hardened Production Security
-- **Security Headers**: HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection`.
-- **IP Rate Limiting**: Built-in sliding-window limiter on FastAPI endpoints.
-- **Zero Secret Exposure**: Strict `.gitignore` policy for all credentials, tokens, and cluster keys.
+### 4. Production Security & Hardening
+- **HTTP Security Headers**: Enforces `Strict-Transport-Security`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin`.
+- **Sliding-Window Rate Limiting**: In-memory rate limiting throttles abuse at 120 requests per minute per IP address.
+- **Input Sanitization**: Regular expression pattern validation on `context` and `userId` fields mitigates command injection and malformed requests.
+- **Sanitized Logging**: Cluster secrets and sensitive environment variables are sanitized prior to model ingestion.
 
 ---
 
-## Project Structure
+## Technical Stack
 
-```text
-DevOps-Kubernetes-AI-Agent/
-├── backend/
-│   ├── app/
-│   │   ├── ai/                 # OpenRouter AI prompt construction & reasoning
-│   │   ├── api/                # FastAPI routers (/health, /contexts, /investigate)
-│   │   ├── core/               # Pydantic Settings configuration & CORS parsing
-│   │   ├── kubernetes/         # Kubectl command execution & resource inspectors
-│   │   ├── models/             # Schema definitions & input validation
-│   │   ├── services/           # Orchestration & InsForge realtime publisher
-│   │   └── main.py             # FastAPI entrypoint, rate limiter, security headers
-│   ├── migrations/             # SQL schema, RLS policies & triggers for InsForge
-│   ├── Dockerfile              # Production Dockerfile with kubectl CLI
-│   └── requirements.txt        # Backend Python dependencies
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── privacy/        # Privacy policy page
-│   │   │   ├── terms/          # Terms of service page
-│   │   │   ├── verify-email/   # Email OTP verification (with Suspense boundary)
-│   │   │   ├── icon.svg        # Scalable vector favicon
-│   │   │   ├── layout.tsx      # Root layout & Inter font configuration
-│   │   │   └── page.tsx        # SRE diagnostic dashboard console
-│   │   ├── hooks/              # React Query mutation hooks
-│   │   ├── lib/                # InsForge TypeScript SDK client
-│   │   ├── services/           # Axios HTTP client
-│   │   └── types/              # TypeScript interfaces for cluster telemetry
-│   ├── next.config.mjs         # Next.js security headers & CSP
-│   ├── package.json            # Frontend dependencies (Next 14, Tailwind 3.4)
-│   └── vercel.json             # Vercel deployment configuration
-├── tests/
-│   ├── scenarios/              # Test Kubernetes manifests (CrashLoop, OOM, ImagePull)
-│   └── test_api.py             # Pytest test suite for backend & InsForge realtime
-├── render.yaml                 # Render Blueprint configuration for Docker web service
-└── docker-compose.yml          # Local container orchestration
+| Component | Technology | Specification / Role |
+| :--- | :--- | :--- |
+| **Frontend Framework** | Next.js 14 (App Router) | Server-rendered React console with TypeScript |
+| **Styling** | Tailwind CSS 3.4 | Obsidian dark mode design system (`#070A0F`, `#0B0F19`, `#2563EB`) |
+| **Iconography** | Lucide React | Unified vector iconography set |
+| **State & Cache** | TanStack React Query v5 | Client-side caching and asynchronous query management |
+| **Backend API** | FastAPI / Python 3.12 | Asynchronous ASGI service with Pydantic validation |
+| **Cluster Interface** | Kubectl CLI / Kubernetes API | Direct containerized cluster communication |
+| **AI Gateway** | OpenRouter SDK | Model orchestration (OpenAI GPT-4o, Anthropic Claude, Meta Llama) |
+| **Backend-as-a-Service**| InsForge | PostgreSQL, RLS policies, Auth OTP, and Socket.IO Pub/Sub |
+| **Hosting (Backend)** | Render | Containerized Docker deployment (`render.yaml`) |
+| **Hosting (Frontend)**| Vercel | Global edge CDN deployment (`frontend/vercel.json`) |
+
+---
+
+## Failure Detection Matrix
+
+| Failure Mode | Trigger Condition | Diagnostic Signal | Automated Remediation |
+| :--- | :--- | :--- | :--- |
+| **CrashLoopBackOff** | Exit Code 1 / Missing Configurations | Container restarts with missing secret / DB URL | Patch ConfigMap / Secret reference in Deployment spec |
+| **OOMKilled** | Exit Code 137 / Exceeded Memory Limit | Pod terminated by Linux kernel OOM Killer | Increase `resources.limits.memory` in manifest |
+| **ImagePullBackOff** | Non-existent image tag / Auth failure | Kubelet event `Failed to pull image` | Correct container image repository / patch ImagePullSecrets |
+| **Pending Pods** | Insufficient CPU/Memory or Node Taints | Kubelet event `0/3 nodes are available` | Add cluster capacity, adjust resource requests, or add tolerations |
+| **Selector Mismatch** | Service selector does not match Pod labels | Service exists but EndpointSlice has 0 targets | Align `spec.selector` in Service with Deployment template labels |
+| **Probe Failure** | Readiness or Liveness probe HTTP failure | Unhealthy container restarts after probe timeout | Adjust `initialDelaySeconds`, path, or container port |
+
+---
+
+## API Specification
+
+### `GET /health`
+Validates backend operational readiness.
+```json
+{
+  "status": "healthy",
+  "service": "ai-kubernetes-agent"
+}
+```
+
+### `GET /contexts`
+Lists available Kubernetes contexts configured in kubeconfig.
+```json
+{
+  "contexts": ["kind-kubernetes-demo-cluster", "arn:aws:eks:region:account:cluster/prod"],
+  "current_context": "kind-kubernetes-demo-cluster",
+  "kubeconfig_path": "/root/.kube/config"
+}
+```
+
+### `POST /investigate`
+Executes an end-to-end cluster investigation workflow.
+
+**Request Payload:**
+```json
+{
+  "userId": "usr_94a3bddb_4175",
+  "context": "kind-kubernetes-demo-cluster"
+}
+```
+
+**Response Payload:**
+```json
+{
+  "status": "success",
+  "message": "Diagnosis complete.",
+  "result": {
+    "root_cause": "Missing database credentials secret reference in deployment manifest",
+    "suggested_fix": "kubectl set env deployment/payment-service DB_PASSWORD=vault-secret",
+    "pods_inspected": 8,
+    "logs_analyzed": 2
+  },
+  "diagnosis": {
+    "root_cause": "Missing database credentials secret reference in deployment manifest",
+    "explanation": "Container payment-service failed at startup with Exit Code 1 due to missing DB_PASSWORD.",
+    "fix": "kubectl set env deployment/payment-service DB_PASSWORD=vault-secret",
+    "kubectl_command": "kubectl describe pod -l app=payment-service",
+    "prevention": "Implement admission controllers to validate required environment variables.",
+    "confidence": 96
+  },
+  "investigation": {
+    "pods": { "success": true, "healthy": false, "total_pods": 8 },
+    "logs": {},
+    "events": { "success": true },
+    "deployments": { "success": true },
+    "network": { "success": true }
+  }
+}
 ```
 
 ---
 
-## Local Development Setup
+## Quickstart & Local Installation
 
-### Prerequisites
-- Python 3.12+
-- Node.js 18+ and npm
-- Docker and Docker Compose (optional)
-- Active Kubernetes cluster (e.g., kind, Minikube, or remote cluster)
+### 1. Clone the Repository
+```bash
+git clone https://github.com/vishalmore90/DevOps-Kubernetes-AI-Agent.git
+cd DevOps-Kubernetes-AI-Agent
+```
 
-### 1. Environment Configuration
-
-Create a root `.env` (or configure `backend/.env` and `frontend/.env.local`):
+### 2. Configure Environment Variables
+Copy and configure the sample environment files:
 
 **Backend (`backend/.env`):**
 ```env
-OPENROUTER_API_KEY=sk-or-v1-your-key
+OPENROUTER_API_KEY=sk-or-v1-your-openrouter-key
 OPENROUTER_MODEL=openai/gpt-4o
 INSFORGE_API_KEY=ik_your_insforge_api_key
 INSFORGE_API_BASE_URL=https://<app-key>.ap-southeast.insforge.app
@@ -160,91 +237,79 @@ NEXT_PUBLIC_INSFORGE_BASE_URL=https://<app-key>.ap-southeast.insforge.app
 NEXT_PUBLIC_INSFORGE_ANON_KEY=anon_your_insforge_anon_key
 ```
 
-### 2. Run the Backend
+### 3. Run Locally with Docker Compose
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+docker compose up --build
 ```
-Verify the health check:
-```bash
-curl http://localhost:8000/health
-# {"status":"healthy","service":"ai-kubernetes-agent"}
-```
-
-### 3. Run the Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Access the application:
+- **Web Console**: `http://localhost:3000`
+- **Backend API**: `http://localhost:8000`
+- **API Documentation**: `http://localhost:8000/docs`
 
 ---
 
-## Testing
+## Verification & Testing
 
-### Run Backend Unit Tests
+### Backend Unit Tests
+Execute the automated pytest suite:
 ```bash
 pytest tests/ -v
 ```
-Tests cover:
-- Root API endpoint availability
-- Health check response (`/health`)
-- Pydantic environment settings and origin parsing
-- Kubernetes context listing (`/contexts`)
-- InsForge realtime progress event publishing
+Test suite validates:
+- API health and routing integrity
+- Pydantic environment configuration and origin validation
+- Kubeconfig context parsing
+- InsForge realtime event emission over HTTP triggers
 
-### Deploy Test Failure Scenarios to Kubernetes
-The repository includes pre-built failure manifests in `tests/scenarios/`:
+### Kubernetes Failure Simulation
+Deploy sample failure manifests to test agent detection capabilities:
 ```bash
-# CrashLoopBackOff test pod (missing required DB credentials)
+# 1. CrashLoopBackOff scenario
 kubectl apply -f tests/scenarios/01-crashloop.yaml
 
-# ImagePullBackOff test pod (invalid container tag)
+# 2. ImagePullBackOff scenario
 kubectl apply -f tests/scenarios/02-imagepull.yaml
 
-# OOMKilled test pod (memory exhaustion loop)
+# 3. OOMKilled scenario
 kubectl apply -f tests/scenarios/03-oomkilled.yaml
 
-# Service selector mismatch (service targeting non-existent labels)
+# 4. Service selector mismatch scenario
 kubectl apply -f tests/scenarios/04-service-selector.yaml
 ```
-Run an investigation from the dashboard to watch the agent detect each failure mode.
 
 ---
 
-## Production Cloud Deployment
+## Cloud Deployment
 
-### 1. FastAPI Backend (Render)
-The backend runs as a Docker container with `kubectl` pre-installed.
-
-1. Create a new **Web Service** on Render from your GitHub repository.
+### Backend Deployment (Render)
+The backend is packaged as a containerized service with `kubectl` pre-installed.
+1. Connect this repository to your Render account.
 2. Select **Docker** as the runtime.
    - **Docker Context**: `./backend`
    - **Dockerfile Path**: `./backend/Dockerfile`
-3. Configure Environment Variables:
-   - `OPENROUTER_API_KEY`: Your OpenRouter API key.
-   - `OPENROUTER_MODEL`: `openai/gpt-4o`
-   - `INSFORGE_API_BASE_URL`: Your InsForge endpoint.
-   - `INSFORGE_API_KEY`: Your InsForge API key.
-   - `ALLOWED_ORIGINS`: `*` (or your Vercel frontend URL).
-   - `KUBECONFIG_DATA`: Base64-encoded kubeconfig YAML for your remote cluster (optional).
-4. Set Health Check Path to `/health`.
+3. Supply required environment variables (`OPENROUTER_API_KEY`, `INSFORGE_API_KEY`, `INSFORGE_API_BASE_URL`, `ALLOWED_ORIGINS`).
+4. Set Health Check path to `/health`.
+5. *(Optional)* For remote cluster access, supply cluster credentials via `KUBECONFIG_DATA` (base64-encoded YAML) or mount a Render Secret File at `/etc/secrets/kubeconfig.yaml`.
 
-### 2. Next.js Frontend (Vercel)
-1. Import the repository on Vercel.
+### Frontend Deployment (Vercel)
+1. Import this repository in Vercel.
 2. Set the **Root Directory** to `frontend`.
-3. Configure Environment Variables:
-   - `NEXT_PUBLIC_API_BASE_URL`: Your Render backend URL (`https://<service-name>.onrender.com`).
+3. Provide environment variables:
+   - `NEXT_PUBLIC_API_BASE_URL`: Your deployed Render API URL.
    - `NEXT_PUBLIC_INSFORGE_BASE_URL`: Your InsForge backend URL.
    - `NEXT_PUBLIC_INSFORGE_ANON_KEY`: Your InsForge anonymous key.
-4. Click **Deploy**.
+4. Deploy the service.
+
+---
+
+## Compliance and Data Governance
+
+- **Telemetry Sanitation**: Diagnostic collectors inspect cluster status and logs. Sensitive strings (tokens, authorization headers, passwords) are filtered before transmission to the AI reasoning gateway.
+- **Data Protection**: Personal data and incident records are governed by the platform [Privacy Policy](/privacy) and [Terms of Service](/terms).
+- **Security Audit**: All version control history has been verified to be free of exposed secrets or private cluster credentials.
 
 ---
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.
+This software is distributed under the terms of the **Apache License 2.0**. Refer to the [LICENSE](LICENSE) file for complete terms.
