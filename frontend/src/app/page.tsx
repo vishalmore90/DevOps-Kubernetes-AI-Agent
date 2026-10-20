@@ -476,11 +476,17 @@ export default function Home() {
                     {contexts.length === 0 ? (
                       <option value="">No cluster contexts detected</option>
                     ) : (
-                      contexts.map((ctx) => (
-                        <option key={ctx} value={ctx}>
-                          {ctx}
-                        </option>
-                      ))
+                      contexts.map((ctx) => {
+                        let label = ctx;
+                        if (ctx === 'k8s-sandbox-cluster') label = 'k8s-sandbox-cluster (CrashLoopBackOff Incident)';
+                        else if (ctx === 'k8s-sandbox-oom') label = 'k8s-sandbox-oom (OOMKilled Incident)';
+                        else if (ctx === 'k8s-sandbox-imagepull') label = 'k8s-sandbox-imagepull (ImagePullBackOff Incident)';
+                        return (
+                          <option key={ctx} value={ctx}>
+                            {label}
+                          </option>
+                        );
+                      })
                     )}
                   </select>
                 </div>
@@ -509,8 +515,15 @@ export default function Home() {
             </div>
 
             {kubeconfigPath && (
-              <div className="text-xs text-[#94A3B8] font-mono pt-2 border-t border-[#1E293B]">
-                Active configuration path: <span className="text-[#F8FAFC]">{kubeconfigPath}</span>
+              <div className="text-xs text-[#94A3B8] font-mono pt-2 border-t border-[#1E293B] flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  Active configuration: <span className="text-[#F8FAFC]">{kubeconfigPath}</span>
+                </div>
+                {selectedContext.startsWith('k8s-sandbox') && (
+                  <span className="px-2.5 py-0.5 rounded bg-[#2563EB]/10 text-[#38BDF8] border border-[#2563EB]/30 text-[10px] font-sans font-semibold uppercase tracking-wider">
+                    Interactive Sandbox Mode
+                  </span>
+                )}
               </div>
             )}
           </div>

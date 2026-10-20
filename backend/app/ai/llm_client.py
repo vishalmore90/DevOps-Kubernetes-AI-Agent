@@ -31,7 +31,8 @@ class LLMClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "response_format": { "type": "json_object" }
+            "response_format": { "type": "json_object" },
+            "max_tokens": 1200
         }
 
         max_retries = 3

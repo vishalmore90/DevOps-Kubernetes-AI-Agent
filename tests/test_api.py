@@ -50,3 +50,29 @@ def test_realtime_progress_publish():
     test_user_id = "0d4219fa-7f74-4bf5-8d09-248d06480a53"
     result = RealtimeService.publish_progress(test_user_id, "Test Step Check", "active")
     assert result is True
+
+def test_sandbox_investigation():
+    """Verify InvestigationService correctly produces sandbox telemetry for k8s-sandbox-cluster."""
+    from app.services.investigation_service import InvestigationService
+    evidence = InvestigationService.run_investigation(context="k8s-sandbox-cluster")
+    assert "pods" in evidence
+    assert "logs" in evidence
+    assert "events" in evidence
+    assert "deployments" in evidence
+    assert "network" in evidence
+    assert evidence["pods"]["success"] is True
+    assert evidence["pods"]["healthy"] is False
+    assert len(evidence["pods"]["problematic_pods"]) > 0
+    assert "payment-service" in evidence["pods"]["problematic_pods"][0]["name"]
+
+def test_investigate_sandbox_endpoint():
+    """Verify /investigate endpoint works with sandbox context and AI reasoning."""
+    response = client.post("/investigate", json={"context": "k8s-sandbox-cluster"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "diagnosis" in data
+    assert "investigation" in data
+    assert "root_cause" in data["diagnosis"]
+    assert "fix" in data["diagnosis"]
+    assert data["diagnosis"]["confidence"] > 0

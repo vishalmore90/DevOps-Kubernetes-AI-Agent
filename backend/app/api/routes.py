@@ -46,24 +46,50 @@ async def get_contexts():
     """
     Returns the list of available Kubernetes contexts from the kubeconfig file,
     along with the default/current context and the path of the kubeconfig file.
+    If no external cloud or local cluster contexts are detected, provides the Sandbox
+    Cluster environments for a 100% free, cardless, and instant live demo experience.
     """
     import os
     kubeconfig_path = os.getenv("KUBECONFIG_PATH") or "~/.kube/config"
     
-    success, data, err = KubectlExecutor.run_json_command(["config", "view"])
-    if not success:
-        logger.error(f"Failed to run config view: {err}")
-        # fallback to config get-contexts -o name
-        success_ctx, stdout_ctx, stderr_ctx = KubectlExecutor.run_command(["config", "get-contexts", "-o", "name"])
-        if success_ctx:
-            names = [line.strip() for line in stdout_ctx.splitlines() if line.strip()]
-            return {"contexts": names, "current_context": names[0] if names else None, "kubeconfig_path": kubeconfig_path}
-        raise HTTPException(status_code=500, detail=f"Failed to get contexts: {err or stderr_ctx}")
-    
-    contexts = data.get("contexts", []) if data else []
-    names = [c.get("name") for c in contexts if c.get("name")]
-    current_context = data.get("current-context") if data else None
-    return {"contexts": names, "current_context": current_context, "kubeconfig_path": kubeconfig_path}
+    contexts = []
+    current_context = None
+
+    try:
+        success, data, err = KubectlExecutor.run_json_command(["config", "view"])
+        if success and data:
+            raw_contexts = data.get("contexts", [])
+            contexts = [c.get("name") for c in raw_contexts if c and c.get("name")]
+            current_context = data.get("current-context")
+        else:
+            success_ctx, stdout_ctx, _ = KubectlExecutor.run_command(["config", "get-contexts", "-o", "name"])
+            if success_ctx and stdout_ctx.strip():
+                contexts = [line.strip() for line in stdout_ctx.splitlines() if line.strip()]
+                current_context = contexts[0] if contexts else None
+    except Exception as exc:
+        logger.warning(f"Unable to query live kubectl contexts: {exc}")
+
+    sandbox_contexts = [
+        "k8s-sandbox-cluster",
+        "k8s-sandbox-oom",
+        "k8s-sandbox-imagepull"
+    ]
+
+    # If no live cluster contexts exist (e.g. Render cloud container without cloud kubeconfig),
+    # return the sandbox contexts
+    if not contexts:
+        return {
+            "contexts": sandbox_contexts,
+            "current_context": sandbox_contexts[0],
+            "kubeconfig_path": "k8s-sandbox-cluster-mode"
+        }
+
+    # If live cluster contexts exist, include them alongside sandbox options
+    return {
+        "contexts": contexts + [c for c in sandbox_contexts if c not in contexts],
+        "current_context": current_context or contexts[0],
+        "kubeconfig_path": kubeconfig_path
+    }
 
 @router.post("/investigate")
 async def investigate_cluster(req_payload: Optional[InvestigateRequest] = None):
