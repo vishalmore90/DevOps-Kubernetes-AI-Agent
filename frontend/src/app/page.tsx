@@ -6,6 +6,21 @@ import { getHealth, getContexts } from '../services/api';
 import { useInvestigation } from '../hooks/useInvestigation';
 import { insforge } from '../lib/insforge';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+  Server,
+  Activity,
+  Terminal,
+  ShieldCheck,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  RefreshCw,
+  LogOut,
+  Layers,
+  Network,
+  AlertTriangle
+} from 'lucide-react';
 
 interface HistoryItem {
   id: number;
@@ -42,7 +57,7 @@ export default function Home() {
   const [showResults, setShowResults] = useState(false);
   const [activeTab, setActiveTab] = useState<'pods' | 'deployments' | 'events' | 'network'>('pods');
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  
+
   // Realtime progress tracking
   const [progressSteps, setProgressSteps] = useState<{ [key: string]: 'pending' | 'active' | 'completed' }>({
     "Checking Pods": 'pending',
@@ -140,12 +155,11 @@ export default function Home() {
     const channelName = `investigation:${user.id}`;
 
     const setupRealtime = async () => {
-      // Pre-register status handlers
       insforge.realtime.on('connect', () => {
         console.log('Realtime socket connected:', insforge.realtime.socketId);
       });
 
-      insforge.realtime.on('error', (err) => {
+      insforge.realtime.on('error', (err: unknown) => {
         console.error('Realtime socket error:', err);
       });
 
@@ -156,21 +170,17 @@ export default function Home() {
         isSubscribed = true;
         console.log(`Subscribed to realtime channel: ${channelName}`);
         
-        // Listen for progress changes
         insforge.realtime.on('progress', (message: { step?: string; status?: string; [key: string]: unknown }) => {
           const step = message.step as string | undefined;
-          const status = message.status as string | undefined; // 'active' or 'completed'
+          const status = message.status as string | undefined;
           
           setProgressSteps(prev => {
             const updated = { ...prev };
-            
-            // If completed, make sure the step is marked completed
             if (status === 'completed') {
               Object.keys(updated).forEach(k => {
                 updated[k] = 'completed';
               });
             } else {
-              // Mark all prior steps as completed, and current step as active
               const stepsOrder = [
                 "Checking Pods",
                 "Reading Logs",
@@ -204,17 +214,15 @@ export default function Home() {
     return () => {
       if (isSubscribed) {
         insforge.realtime.unsubscribe(channelName);
-        insforge.realtime.disconnect();
       }
     };
   }, [user]);
 
-  const { mutate, data, isPending, error: mutationError } = useInvestigation();
+  const { mutate, isPending, data: investigationResult, error: mutationError } = useInvestigation();
 
-  const handleInvestigate = () => {
-    if (!user?.id) return;
+  const handleStartInvestigation = () => {
+    if (!user) return;
     
-    // Reset progress steps to pending
     setProgressSteps({
       "Checking Pods": 'pending',
       "Reading Logs": 'pending',
@@ -230,7 +238,6 @@ export default function Home() {
     mutate({ userId: user.id, context: selectedContext }, {
       onSuccess: async (res) => {
         setShowResults(true);
-        // Save to History Database
         try {
           const problematicPods = res.investigation.pods.problematic_pods || [];
           const namespace = problematicPods[0]?.namespace || 'all';
@@ -246,7 +253,6 @@ export default function Home() {
               status: status
             }]);
             
-          // Refresh list
           fetchHistory(user.id);
         } catch (err) {
           console.error("Failed to save record to history database:", err);
@@ -255,40 +261,42 @@ export default function Home() {
     });
   };
 
-  // Auth Handlers
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
-
-    if (isSignUp) {
-      const { data, error } = await insforge.auth.signUp({
-        email,
-        password,
-        name,
-      });
-      if (error) {
-        setAuthError(error.message || 'Failed to sign up.');
-      } else if (data) {
-        if (data.requireEmailVerification) {
-          router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-        } else if (data.user) {
-          setUser(data.user);
+    try {
+      if (isSignUp) {
+        const { data, error } = await insforge.auth.signUp({
+          email,
+          password,
+          name: name || undefined,
+        });
+        if (error) {
+          setAuthError(error.message);
+        } else if (data?.user) {
+          if (!data.user.emailVerified) {
+            router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+          } else {
+            setUser(data.user as unknown as AuthUser);
+          }
+        }
+      } else {
+        const { data, error } = await insforge.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) {
+          setAuthError(error.message);
+        } else if (data?.user) {
+          if (!data.user.emailVerified) {
+            router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+          } else {
+            setUser(data.user as unknown as AuthUser);
+          }
         }
       }
-    } else {
-      const { data, error } = await insforge.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) {
-        setAuthError(error.message || 'Invalid email or password.');
-      } else if (data?.user) {
-        if (!data.user.emailVerified) {
-          router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-        } else {
-          setUser(data.user);
-        }
-      }
+    } catch (err: unknown) {
+      setAuthError((err as Error).message || "An authentication error occurred.");
     }
   };
 
@@ -299,373 +307,269 @@ export default function Home() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
-        <svg className="animate-spin h-8 w-8 text-indigo-500 mr-2" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <span>Loading session...</span>
-      </div>
+      <main className="min-h-screen bg-[#070A0F] text-[#F8FAFC] flex items-center justify-center p-6 font-sans">
+        <div className="flex items-center space-x-3 text-sm text-[#94A3B8]">
+          <Activity className="w-5 h-5 text-[#2563EB] animate-spin" />
+          <span>Initializing console...</span>
+        </div>
+      </main>
     );
   }
-
 
   // Render Login Card if not authenticated
   if (!user) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 relative overflow-hidden font-sans">
-        <div className="absolute top-[-25%] left-[-20%] w-[65%] h-[65%] bg-blue-900/10 rounded-full blur-[140px] pointer-events-none"></div>
-        <div className="absolute bottom-[-25%] right-[-20%] w-[65%] h-[65%] bg-indigo-900/10 rounded-full blur-[140px] pointer-events-none"></div>
-        <div className="absolute top-[40%] left-[35%] w-[30%] h-[30%] bg-violet-900/5 rounded-full blur-[120px] pointer-events-none"></div>
-
-        <div className="z-10 w-full max-w-md bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/50 rounded-3xl p-8 backdrop-blur-xl shadow-[0_0_50px_-12px_rgba(99,102,241,0.15)] space-y-6 transition-all duration-500">
-          <div className="text-center space-y-2">
-            <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-300 to-violet-400">
-              K8sInvestigator
+      <main className="min-h-screen bg-[#070A0F] text-[#F8FAFC] flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-md bg-[#0B0F19] border border-[#1E293B] rounded-lg p-8 shadow-2xl space-y-8">
+          <div className="space-y-3 text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-[#2563EB]/10 border border-[#2563EB]/20 text-[#2563EB] mx-auto">
+              <Server className="w-6 h-6 text-[#2563EB]" />
+            </div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-[#FFFFFF]">
+              Kubernetes Agent
             </h1>
-            <p className="text-xs text-slate-400">
-              Authenticate with your InsForge account to access cluster diagnostics.
+            <p className="text-sm text-[#94A3B8]">
+              Automated cluster diagnostics and incident reasoning.
             </p>
           </div>
 
           <form onSubmit={handleAuth} className="space-y-4">
             {isSignUp && (
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Display Name</label>
+                <label className="block text-xs font-semibold text-[#CBD5E1] uppercase mb-1 tracking-wider">Display Name</label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 rounded-xl px-4 py-3 text-sm text-slate-200 outline-none transition-all duration-350"
-                  placeholder="John Doe"
+                  className="w-full bg-[#070A0F] border border-[#1E293B] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/40 rounded-lg px-4 py-2.5 text-sm text-[#FFFFFF] outline-none transition-colors"
+                  placeholder="DevOps Engineer"
                 />
               </div>
             )}
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Email Address</label>
+              <label className="block text-xs font-semibold text-[#CBD5E1] uppercase mb-1 tracking-wider">Email Address</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950/60 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 rounded-xl px-4 py-3 text-sm text-slate-200 outline-none transition-all duration-350"
-                placeholder="user@example.com"
+                className="w-full bg-[#070A0F] border border-[#1E293B] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/40 rounded-lg px-4 py-2.5 text-sm text-[#FFFFFF] outline-none transition-colors"
+                placeholder="engineer@company.com"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Password</label>
+              <label className="block text-xs font-semibold text-[#CBD5E1] uppercase mb-1 tracking-wider">Password</label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-950/60 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 rounded-xl px-4 py-3 text-sm text-slate-200 outline-none transition-all duration-350"
-                placeholder="••••••••"
+                className="w-full bg-[#070A0F] border border-[#1E293B] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/40 rounded-lg px-4 py-2.5 text-sm text-[#FFFFFF] outline-none transition-colors"
+                placeholder="Password"
               />
             </div>
 
             {authError && (
-              <p className="text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-2.5 rounded-lg text-center font-semibold">
+              <p className="text-xs text-[#EF4444] bg-[#7F1D1D]/20 border border-[#991B1B]/40 p-2.5 rounded-lg text-center font-medium">
                 {authError}
               </p>
             )}
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-655 hover:from-blue-500 hover:to-indigo-600 text-white font-bold py-3.5 rounded-xl shadow-lg hover:shadow-indigo-500/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-95 transition-all duration-300 cursor-pointer text-sm"
+              className="w-full bg-[#2563EB] hover:bg-[#1D4ED8] text-[#FFFFFF] font-medium py-2.5 rounded-lg border border-[#38BDF8]/20 transition-colors cursor-pointer text-sm"
             >
               {isSignUp ? 'Create Account' : 'Sign In'}
             </button>
           </form>
 
-          <div className="text-center text-xs text-slate-500 space-y-2.5 pt-2">
-            <div>
-              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-              <button
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setAuthError(null);
-                }}
-                className="text-indigo-400 hover:text-indigo-300 hover:underline font-semibold transition"
-              >
-                {isSignUp ? 'Sign In' : 'Create Account'}
-              </button>
-            </div>
-            <div>
-              <button
-                onClick={() => router.push(`/verify-email?email=${encodeURIComponent(email)}`)}
-                className="text-slate-400 hover:text-white transition underline font-medium"
-              >
-                Already have a verification code? Verify email
-              </button>
-            </div>
+          <div className="text-center pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setAuthError(null);
+              }}
+              className="text-xs text-[#38BDF8] hover:text-[#FFFFFF] transition-colors font-medium hover:underline"
+            >
+              {isSignUp ? 'Already registered? Sign In' : 'Need an account? Register'}
+            </button>
           </div>
         </div>
       </main>
     );
   }
 
-  const report = data?.investigation;
-  const diagnosis = data?.diagnosis;
+  const diagnosis = investigationResult?.diagnosis;
+  const report = investigationResult?.investigation;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-4 sm:p-12 relative overflow-y-auto font-sans">
-      
-      {/* Background Gradients */}
-      <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[50%] bg-blue-950/15 rounded-full blur-[140px] pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[50%] bg-indigo-950/15 rounded-full blur-[140px] pointer-events-none"></div>
-      <div className="absolute top-[20%] left-[45%] w-[40%] h-[40%] bg-violet-950/10 rounded-full blur-[130px] pointer-events-none"></div>
+    <main className="min-h-screen bg-[#070A0F] text-[#F8FAFC] flex flex-col font-sans antialiased">
+      {/* Navigation Bar (Max 5 Links) */}
+      <header className="border-b border-[#1E293B] bg-[#0B0F19]/90 sticky top-0 z-50 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-8">
+            <Link href="/" className="flex items-center space-x-2.5 text-[#FFFFFF] font-bold tracking-tight text-lg">
+              <Server className="w-5 h-5 text-[#2563EB]" />
+              <span>Kubernetes Agent</span>
+            </Link>
 
-      {/* Top Bar */}
-      <div className="z-10 w-full max-w-5xl flex items-center justify-between border-b border-slate-800/40 pb-5 mb-6">
-        {/* Signed In As info badge */}
-        <div className="flex items-center space-x-2.5 bg-slate-900/40 border border-slate-850/80 px-3.5 py-2 rounded-2xl">
-          <div className="bg-blue-600/20 text-blue-400 p-1.5 rounded-lg border border-blue-500/20">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
+            {/* Exactly 5 Navigation Links */}
+            <nav className="hidden md:flex items-center space-x-6 text-xs uppercase tracking-wider font-semibold text-[#94A3B8]">
+              <Link href="/" className="text-[#FFFFFF] transition-colors">Overview</Link>
+              <a href="#investigations" className="hover:text-[#FFFFFF] transition-colors">Investigations</a>
+              <a href="#clusters" className="hover:text-[#FFFFFF] transition-colors">Clusters</a>
+              <a href="#evidence" className="hover:text-[#FFFFFF] transition-colors">Documentation</a>
+              <Link href="/privacy" className="hover:text-[#FFFFFF] transition-colors">Privacy</Link>
+            </nav>
           </div>
-          <div className="text-[10px] text-left">
-            <div className="font-bold text-slate-500 uppercase tracking-wider text-[8px]">Signed In As</div>
-            <div className="font-semibold text-slate-350">{user.email}</div>
-          </div>
-        </div>
 
-        <div className="flex items-center space-x-3">
-          <div className="hidden sm:flex items-center space-x-2 bg-slate-900/60 border border-slate-800/80 px-4 py-2 rounded-full backdrop-blur-md">
-            <div className={`w-2.5 h-2.5 rounded-full ${isBackendHealthy ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]'}`} />
-            <span className="text-xs font-semibold text-slate-300">
-              {isBackendHealthy ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
-          <button
-            onClick={handleSignOut}
-            className="text-xs text-slate-400 hover:text-white transition font-medium cursor-pointer"
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-
-      {/* Main Page Title */}
-      <div className="text-center space-y-2 mt-8 mb-10 z-10">
-        <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-200 to-white">
-          AI Kubernetes Agent
-        </h1>
-        <p className="text-sm text-slate-400 max-w-md mx-auto">
-          Investigate cluster issues with AI-powered root cause analysis
-        </p>
-      </div>
-
-      {/* SELECT CLUSTER Panel */}
-      {(() => {
-        const defaultMockContexts = [
-          "kind-kubernetes-demo-cluster",
-          "arn:aws:eks:ap-south-1:418384447924:cluster/demo-cluster",
-          "flyte-devbox",
-          "flytev2-sandbox",
-          "gke_neat-dryad-493910-b0_asia-south1_escbash-production",
-          "iam-root-account@o2-demo-eks.ap-south-1.eksctl.io"
-        ];
-        const displayedContexts = Array.from(new Set([...contexts, ...defaultMockContexts]));
-
-        return displayedContexts.length > 0 && (
-          <div className="z-10 w-full max-w-5xl bg-slate-900/40 border border-slate-850/80 rounded-3xl p-6 backdrop-blur-xl shadow-2xl space-y-4 hover:border-slate-800/80 transition duration-300 mb-8">
-            <div className="flex items-center justify-between border-b border-slate-850/60 pb-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="bg-blue-950/40 border border-blue-900/30 text-blue-400 p-1.5 rounded-lg">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Select Cluster</h3>
-                </div>
-              </div>
-              <span className="bg-indigo-950/30 border border-indigo-900/20 text-indigo-400 px-2.5 py-1 rounded-full text-[10px] font-bold">
-                {displayedContexts.length} clusters available
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-[#070A0F] border border-[#1E293B] text-xs">
+              <span className={`w-2 h-2 rounded-full ${isBackendHealthy ? 'bg-[#10B981]' : 'bg-[#EF4444]'}`} />
+              <span className="text-[#CBD5E1] font-mono text-[11px]">
+                {isBackendHealthy ? 'Backend Live' : 'Backend Offline'}
               </span>
             </div>
 
-            <div className="text-[10px] font-mono text-slate-400 bg-slate-950/60 border border-slate-850/80 rounded-xl px-3.5 py-2 inline-block">
-              {kubeconfigPath || "/tmp/k8s-agent-kubeconfig.json"}
+            <div className="hidden sm:flex items-center space-x-2 text-xs text-[#94A3B8] border-l border-[#1E293B] pl-4">
+              <span>{user.email}</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {displayedContexts.map((ctx) => {
-                const isSelected = selectedContext === ctx;
-                const isKind = ctx.includes('kind');
-                const isEks = ctx.includes('eks') || ctx.includes('aws') || ctx.includes('arn:aws');
-                const isGke = ctx.includes('gke') || ctx.includes('google');
-                const isFlyte = ctx.includes('flyte');
-                
-                let subtitle = "kubernetes-cluster";
-                let endpoint = "https://127.0.0.1:6443";
-                
-                if (isKind) {
-                  subtitle = "kind-kubernetes-demo-cluster";
-                  endpoint = "https://test_docker_internal:50170";
-                } else if (isEks) {
-                  if (ctx.includes('iam-root-account')) {
-                    subtitle = "o2-demo-eks.ap-south-1.eksctl.io";
-                    endpoint = "https://A3F49A1C1CA3A6D71D22DFEE3E15B.gr7.ap-south-1.eksctl.io";
-                  } else {
-                    subtitle = "arn:aws:eks:ap-south-1:418384447924:cluster/...";
-                    endpoint = "https://3E95914C0AF7EE71F958021E431E248A.gr7.ap-south-1.eks.amazonaws.com";
-                  }
-                } else if (isGke) {
-                  subtitle = "gke_neat-dryad-493910-b0_asia-...";
-                  endpoint = "https://35.82.47.244";
-                } else if (isFlyte) {
-                  subtitle = ctx === "flyte-devbox" ? "flytev2-sandbox" : "flytev2-sandbox";
-                  endpoint = "https://host.docker.internal:6443";
-                }
+            <button
+              onClick={handleSignOut}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#070A0F] hover:bg-[#1E293B] text-[#F8FAFC] text-xs font-medium rounded-lg border border-[#334155] transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign out</span>
+            </button>
+          </div>
+        </div>
+      </header>
 
-                return (
-                  <button
-                    key={ctx}
-                    onClick={() => setSelectedContext(ctx)}
-                    className={`text-left p-4 rounded-2xl border transition-all duration-300 flex items-start space-x-3 cursor-pointer group relative overflow-hidden ${
-                      isSelected
-                        ? 'bg-slate-900/80 border-blue-500/80 shadow-[0_0_20px_-3px_rgba(59,130,246,0.15)] scale-[1.01]'
-                        : 'bg-slate-950/40 border-slate-850 hover:border-slate-800 hover:bg-slate-950/60'
-                    }`}
+      {/* Hero / Action Section */}
+      <section className="py-12 border-b border-[#1E293B] bg-[#090D16]">
+        <div className="max-w-7xl mx-auto px-6 space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#FFFFFF]">
+              Cluster Health Diagnostics
+            </h1>
+            <p className="text-sm sm:text-base text-[#94A3B8] max-w-2xl">
+              Inspect pods, logs, events, and networking states. Analyze anomalies in real time.
+            </p>
+          </div>
+
+          {/* Cluster Selector & Trigger */}
+          <div id="clusters" className="bg-[#0B0F19] border border-[#1E293B] rounded-lg p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex-1 space-y-1">
+                <label className="block text-xs font-semibold text-[#CBD5E1] uppercase tracking-wider">
+                  Target Kubernetes Context
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedContext}
+                    onChange={(e) => setSelectedContext(e.target.value)}
+                    className="w-full bg-[#070A0F] border border-[#1E293B] focus:border-[#2563EB] rounded-lg px-4 py-2.5 text-sm text-[#FFFFFF] font-mono outline-none transition-colors appearance-none"
                   >
-                    <div className={`p-2 rounded-xl border transition-all ${
-                      isSelected
-                        ? 'bg-blue-950/60 border-blue-500/30 text-blue-400'
-                        : 'bg-slate-900 border-slate-850 text-slate-400 group-hover:text-slate-200'
-                    }`}>
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                      </svg>
-                    </div>
-
-                    <div className="flex-1 min-w-0 pr-12">
-                      <div className="font-bold text-xs text-slate-250 truncate group-hover:text-white transition">
-                        {ctx}
-                      </div>
-                      <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                        {subtitle}
-                      </div>
-                      <div className="text-[9px] text-slate-650 truncate mt-1 font-mono">
-                        {endpoint}
-                      </div>
-                    </div>
-
-                    {isSelected && (
-                      <div className="absolute top-3 right-3 flex flex-col items-end space-y-1">
-                        <span className="bg-blue-950/60 border border-blue-500/40 text-blue-400 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider">
-                          selected
-                        </span>
-                        <span className="bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider">
-                          current
-                        </span>
-                      </div>
+                    {contexts.length === 0 ? (
+                      <option value="">No cluster contexts detected</option>
+                    ) : (
+                      contexts.map((ctx) => (
+                        <option key={ctx} value={ctx}>
+                          {ctx}
+                        </option>
+                      ))
                     )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
+                  </select>
+                </div>
+              </div>
 
-      {/* Action Buttons Section */}
-      <div className="z-10 w-full max-w-5xl flex items-center space-x-6 mb-8">
-        <button
-          onClick={handleInvestigate}
-          disabled={isPending || !isBackendHealthy}
-          className={`px-8 py-3.5 rounded-2xl font-bold tracking-wide transition duration-300 transform active:scale-95 shadow-xl ${
-            isPending 
-              ? 'bg-indigo-950/80 text-indigo-300 border border-indigo-850 cursor-not-allowed'
-              : !isBackendHealthy
-              ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-              : 'bg-gradient-to-r from-blue-600 to-indigo-655 hover:from-blue-500 hover:to-indigo-600 text-white shadow-indigo-500/10 cursor-pointer hover:-translate-y-0.5 hover:shadow-indigo-500/25 transition-all duration-300'
-          }`}
-        >
-          <div className="flex items-center justify-center space-x-2">
-            {isPending && (
-              <svg className="animate-spin h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
+              <div className="flex items-end space-x-3 pt-2 sm:pt-0">
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  className="px-4 py-2.5 bg-[#070A0F] hover:bg-[#1E293B] text-[#F8FAFC] text-sm font-medium rounded-lg border border-[#334155] transition-colors inline-flex items-center space-x-2"
+                >
+                  <RefreshCw className="w-4 h-4 text-[#94A3B8]" />
+                  <span>Refresh</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleStartInvestigation}
+                  disabled={isPending || !selectedContext}
+                  className="px-5 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-[#FFFFFF] text-sm font-medium rounded-lg border border-[#38BDF8]/20 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center space-x-2"
+                >
+                  <Activity className={`w-4 h-4 ${isPending ? 'animate-spin' : ''}`} />
+                  <span>{isPending ? 'Diagnosing Cluster...' : 'Run Investigation'}</span>
+                </button>
+              </div>
+            </div>
+
+            {kubeconfigPath && (
+              <div className="text-xs text-[#94A3B8] font-mono pt-2 border-t border-[#1E293B]">
+                Active configuration path: <span className="text-[#F8FAFC]">{kubeconfigPath}</span>
+              </div>
             )}
-            <span>{isPending ? 'Diagnosing...' : 'Investigate Cluster'}</span>
           </div>
-        </button>
+        </div>
+      </section>
 
-        <button
-          onClick={handleRefresh}
-          className="text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer flex items-center space-x-1.5"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89H17v4.11" />
-          </svg>
-          <span>Refresh clusters</span>
-        </button>
-      </div>
-
-      {/* Main Section */}
-      <div className="z-10 w-full max-w-5xl grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* Main Content Grid */}
+      <div className="max-w-7xl mx-auto px-6 py-10 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Left Column: CTA, Realtime steps, and History */}
-        <div className="lg:col-span-1 space-y-6">
+        {/* Left Column: Milestones + History (4 Cols) */}
+        <div className="lg:col-span-4 space-y-6">
           
-          {/* Active Context Card */}
-          {selectedContext && (
-            <div className="bg-slate-900/40 border border-slate-850/80 rounded-3xl p-5 backdrop-blur-xl shadow-2xl space-y-2">
-              <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">Active Target Context</span>
-              <span className="block text-xs font-mono font-bold text-slate-300 truncate">{selectedContext}</span>
-            </div>
-          )}
-
-          {/* Realtime Progress Steps */}
+          {/* Progress Timeline */}
           {isPending && (
-            <div className="bg-slate-900/40 border border-slate-850/80 rounded-3xl p-6 backdrop-blur-xl shadow-2xl space-y-4">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Investigation Status</h4>
+            <div className="bg-[#0B0F19] border border-[#1E293B] rounded-lg p-6 space-y-4">
+              <h3 className="text-xs font-semibold text-[#CBD5E1] uppercase tracking-wider flex items-center space-x-2">
+                <Activity className="w-4 h-4 text-[#2563EB] animate-spin" />
+                <span>Live Investigation Milestones</span>
+              </h3>
+              
               <div className="space-y-3">
-                {Object.entries(progressSteps).map(([step, state], index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center space-x-3">
-                      {state === 'completed' ? (
-                        <div className="bg-emerald-950 text-emerald-400 p-0.5 rounded-full border border-emerald-900/35 shadow-[0_0_8px_rgba(16,185,129,0.2)]">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                        </div>
-                      ) : state === 'active' ? (
-                        <div className="w-4.5 h-4.5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></div>
-                      ) : (
-                        <div className="w-4.5 h-4.5 rounded-full border border-slate-800 bg-slate-950"></div>
-                      )}
-                      <span className={`${state === 'active' ? 'text-indigo-400 font-semibold' : state === 'completed' ? 'text-slate-400' : 'text-slate-500'}`}>
-                        {step}
+                {Object.entries(progressSteps).map(([stepName, stepStatus]) => {
+                  return (
+                    <div key={stepName} className="flex items-center justify-between text-xs py-1 border-b border-[#1E293B]/60 last:border-none">
+                      <span className={stepStatus === 'active' ? 'text-[#38BDF8] font-semibold' : stepStatus === 'completed' ? 'text-[#FFFFFF]' : 'text-[#94A3B8]'}>
+                        {stepName}
                       </span>
+                      {stepStatus === 'completed' && <CheckCircle2 className="w-4 h-4 text-[#10B981]" />}
+                      {stepStatus === 'active' && <Clock className="w-4 h-4 text-[#38BDF8] animate-spin" />}
+                      {stepStatus === 'pending' && <span className="w-2 h-2 rounded-full bg-[#1E293B]" />}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Previous Investigations (History) */}
-          <div className="bg-slate-900/40 border border-slate-850/80 rounded-3xl p-6 backdrop-blur-xl shadow-2xl space-y-4">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent History</h4>
+          {/* Recent History */}
+          <div id="investigations" className="bg-[#0B0F19] border border-[#1E293B] rounded-lg p-6 space-y-4">
+            <h3 className="text-xs font-semibold text-[#CBD5E1] uppercase tracking-wider flex items-center space-x-2">
+              <Clock className="w-4 h-4 text-[#2563EB]" />
+              <span>Recent Investigations</span>
+            </h3>
+
             {history.length === 0 ? (
-              <p className="text-xs text-slate-500">No previous investigations found.</p>
+              <p className="text-xs text-[#94A3B8]">No past cluster investigation records found.</p>
             ) : (
               <div className="space-y-3">
-                {history.map((item, idx) => (
-                  <div key={idx} className="bg-slate-950/40 border border-slate-850 hover:border-indigo-900/40 rounded-xl p-3 flex items-center justify-between text-xs hover:scale-[1.01] hover:shadow-[0_0_15px_-3px_rgba(99,102,241,0.06)] hover:-translate-y-0.5 transition-all duration-300">
-                    <div className="space-y-1">
-                      <div className="font-semibold text-slate-300 truncate max-w-[140px]">{item.root_cause}</div>
-                      <div className="text-[10px] text-slate-500">Namespace: {item.namespace}</div>
-                    </div>
-                    <div className="text-right space-y-1">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.status === 'Healthy' ? 'bg-emerald-950/30 text-emerald-400' : 'bg-red-950/30 text-red-400'}`}>
+                {history.map((item) => (
+                  <div key={item.id} className="bg-[#070A0F] border border-[#1E293B] rounded-lg p-3 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[#FFFFFF] truncate max-w-[180px]">{item.root_cause}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.status === 'Healthy' ? 'bg-[#064E3B]/40 text-[#10B981]' : 'bg-[#7F1D1D]/40 text-[#EF4444]'}`}>
                         {item.status}
                       </span>
-                      <div className="text-[10px] text-slate-400 font-semibold">{item.confidence}% Conf</div>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-[#94A3B8]">
+                      <span>Namespace: {item.namespace}</span>
+                      <span>{item.confidence}% Confidence</span>
                     </div>
                   </div>
                 ))}
@@ -674,178 +578,164 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Column: AI Diagnosis + Cluster Evidence Report */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Right Column: AI Diagnosis + Cluster Evidence Report (8 Cols) */}
+        <div id="evidence" className="lg:col-span-8 space-y-6">
           
-          {/* Error Message */}
           {mutationError && (
-            <div className="bg-red-950/20 border border-red-900/35 rounded-3xl p-6 text-center shadow-lg">
-              {(() => {
-                const err = mutationError as { response?: { data?: { detail?: string } }; message?: string };
-                const detail = err.response?.data?.detail || err.message || String(err);
-                if (detail.includes("Unable to connect") || detail.includes("connection to the server") || detail.includes("connection refused")) {
-                  return (
-                    <div className="space-y-3 text-left">
-                      <p className="font-bold text-red-400 text-sm">Unable to connect to Kubernetes cluster.</p>
-                      <div className="text-slate-350 text-xs space-y-2">
-                        <p className="font-semibold text-slate-400">Please verify:</p>
-                        <ul className="list-disc pl-4 space-y-1 text-slate-400">
-                          <li>Your kubeconfig path configuration is correct</li>
-                          <li>The cluster is running and active</li>
-                          <li>Your kubectl context has appropriate permissions</li>
-                        </ul>
-                        <p className="text-[10px] text-slate-500 font-mono mt-2 pt-2 border-t border-red-900/10">
-                          Raw Error: {detail}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                }
-                return <p className="text-red-400 text-xs">{detail}</p>;
-              })()}
+            <div className="bg-[#7F1D1D]/20 border border-[#991B1B]/40 rounded-lg p-6 space-y-3">
+              <div className="flex items-center space-x-2 text-[#EF4444]">
+                <AlertCircle className="w-5 h-5" />
+                <h4 className="font-bold text-sm">Cluster Investigation Error</h4>
+              </div>
+              <p className="text-xs text-[#FCA5A5] leading-relaxed">
+                {(mutationError as Error).message || "Failed to communicate with Kubernetes cluster or execute kubectl diagnostic checks."}
+              </p>
             </div>
           )}
 
-          {/* Healthy State Card */}
-          {showResults && report && report.pods?.healthy && report.deployments?.healthy && report.network?.healthy && (
-            <div className="bg-emerald-950/15 border border-emerald-900/20 rounded-3xl p-8 text-center space-y-3 backdrop-blur-xl shadow-2xl">
-              <div className="inline-flex bg-emerald-950/40 text-emerald-400 p-3 rounded-full border border-emerald-900/30 shadow-lg shadow-emerald-500/5">
-                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+          {showResults && diagnosis && (
+            <div className="bg-[#0B0F19] border border-[#1E293B] rounded-lg p-6 space-y-6">
+              <div className="flex items-center justify-between border-b border-[#1E293B] pb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 rounded-lg bg-[#2563EB]/10 border border-[#2563EB]/30 text-[#2563EB]">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-[#FFFFFF]">Root Cause Diagnosis</h2>
+                    <span className="text-xs text-[#94A3B8]">Automated reasoning from cluster telemetry</span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-xs text-[#94A3B8] block">Confidence Score</span>
+                  <span className="text-lg font-mono font-bold text-[#38BDF8]">{diagnosis.confidence}%</span>
+                </div>
               </div>
-              <h3 className="text-emerald-400 font-bold text-lg">No critical Kubernetes issues detected.</h3>
-              <p className="text-slate-400 text-xs">Cluster appears healthy.</p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-[#070A0F] border border-[#1E293B] rounded-lg p-4 space-y-2">
+                  <span className="text-xs font-semibold text-[#CBD5E1] uppercase tracking-wide">Root Cause</span>
+                  <p className="text-sm font-semibold text-[#FFFFFF]">{diagnosis.root_cause}</p>
+                </div>
+
+                <div className="bg-[#070A0F] border border-[#1E293B] rounded-lg p-4 space-y-2">
+                  <span className="text-xs font-semibold text-[#CBD5E1] uppercase tracking-wide">Severity</span>
+                  <p className="text-sm font-semibold text-[#F59E0B] uppercase">{diagnosis.severity || 'Medium'}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-[#CBD5E1] uppercase tracking-wide">Technical Explanation</span>
+                <p className="text-xs sm:text-sm text-[#CBD5E1] leading-relaxed bg-[#070A0F] border border-[#1E293B] rounded-lg p-4">
+                  {diagnosis.explanation}
+                </p>
+              </div>
+
+              {diagnosis.fix && (
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-[#CBD5E1] uppercase tracking-wide">Recommended Remediation</span>
+                  <pre className="text-xs font-mono text-[#F8FAFC] bg-[#070A0F] border border-[#1E293B] rounded-lg p-4 overflow-x-auto leading-relaxed">
+                    {diagnosis.fix}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
 
-          {/* AI Diagnosis Card */}
-          {showResults && diagnosis && report && (!report.pods?.healthy || !report.deployments?.healthy || !report.network?.healthy) && (
-            <div className="bg-indigo-950/10 border border-indigo-900/20 rounded-3xl p-6 backdrop-blur-xl shadow-2xl space-y-5">
-              <div className="flex items-center justify-between border-b border-indigo-950 pb-3">
-                <h3 className="text-lg font-bold text-indigo-400 flex items-center space-x-2">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  <span>SRE AI Incident Report</span>
-                </h3>
-                <div className="flex items-center space-x-1 bg-indigo-950/30 border border-indigo-900/20 px-3 py-1 rounded-full text-xs font-mono font-bold text-indigo-300">
-                  <span>Confidence:</span>
-                  <span className="text-indigo-400">{diagnosis.confidence}%</span>
-                </div>
-              </div>
-
-              <div className="space-y-4 text-sm">
-                <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Root Cause</span>
-                  <div className="text-base font-bold text-slate-200 mt-0.5">{diagnosis.root_cause}</div>
-                </div>
-
-                <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Explanation</span>
-                  <p className="text-slate-300 leading-relaxed mt-1">{diagnosis.explanation}</p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  <div className="bg-slate-900/40 p-4 rounded-2xl border border-slate-850">
-                    <span className="text-xs font-bold text-indigo-400 uppercase tracking-wide">Suggested Fix</span>
-                    <p className="text-slate-300 text-xs leading-relaxed mt-1.5">{diagnosis.fix}</p>
-                  </div>
-                  <div className="bg-slate-900/40 p-4 rounded-2xl border border-slate-850">
-                    <span className="text-xs font-bold text-violet-400 uppercase tracking-wide">Prevention Plan</span>
-                    <p className="text-slate-300 text-xs leading-relaxed mt-1.5">{diagnosis.prevention}</p>
-                  </div>
-                </div>
-
-                {diagnosis.kubectl_command && (
-                  <div className="space-y-2 pt-2">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Remediation Command</span>
-                    <pre className="bg-slate-950 text-slate-300 text-xs font-mono p-4 rounded-xl border border-slate-850 overflow-x-auto">
-                      {diagnosis.kubectl_command}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Cluster Evidence Card */}
+          {/* Evidence Inspector Tabs */}
           {showResults && report && (
-            <div className="bg-slate-900/30 border border-slate-850 rounded-3xl p-6 backdrop-blur-xl shadow-2xl space-y-5">
-              <div className="flex border-b border-slate-850 overflow-x-auto whitespace-nowrap">
+            <div className="bg-[#0B0F19] border border-[#1E293B] rounded-lg overflow-hidden">
+              <div className="flex border-b border-[#1E293B] bg-[#070A0F] overflow-x-auto">
                 <button
+                  type="button"
                   onClick={() => setActiveTab('pods')}
-                  className={`py-3 px-6 text-sm font-bold border-b-2 transition-all ${
-                    activeTab === 'pods' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'
+                  className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider flex items-center space-x-2 border-b-2 transition-colors ${
+                    activeTab === 'pods'
+                      ? 'border-[#2563EB] text-[#FFFFFF] bg-[#0B0F19]'
+                      : 'border-transparent text-[#94A3B8] hover:text-[#FFFFFF]'
                   }`}
                 >
-                  Pods & Logs ({report.pods.failed_pods ?? 0})
+                  <Server className="w-4 h-4" />
+                  <span>Pods ({report.pods?.total_pods || 0})</span>
                 </button>
+
                 <button
+                  type="button"
                   onClick={() => setActiveTab('deployments')}
-                  className={`py-3 px-6 text-sm font-bold border-b-2 transition-all ${
-                    activeTab === 'deployments' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'
+                  className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider flex items-center space-x-2 border-b-2 transition-colors ${
+                    activeTab === 'deployments'
+                      ? 'border-[#2563EB] text-[#FFFFFF] bg-[#0B0F19]'
+                      : 'border-transparent text-[#94A3B8] hover:text-[#FFFFFF]'
                   }`}
                 >
-                  Deployments ({report.deployments.unhealthy_deployments?.length ?? 0})
+                  <Layers className="w-4 h-4" />
+                  <span>Deployments</span>
                 </button>
+
                 <button
+                  type="button"
                   onClick={() => setActiveTab('events')}
-                  className={`py-3 px-6 text-sm font-bold border-b-2 transition-all ${
-                    activeTab === 'events' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'
+                  className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider flex items-center space-x-2 border-b-2 transition-colors ${
+                    activeTab === 'events'
+                      ? 'border-[#2563EB] text-[#FFFFFF] bg-[#0B0F19]'
+                      : 'border-transparent text-[#94A3B8] hover:text-[#FFFFFF]'
                   }`}
                 >
-                  Events & Warnings ({report.events.warnings?.length ?? 0})
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Events</span>
                 </button>
+
                 <button
+                  type="button"
                   onClick={() => setActiveTab('network')}
-                  className={`py-3 px-6 text-sm font-bold border-b-2 transition-all ${
-                    activeTab === 'network' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-200'
+                  className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider flex items-center space-x-2 border-b-2 transition-colors ${
+                    activeTab === 'network'
+                      ? 'border-[#2563EB] text-[#FFFFFF] bg-[#0B0F19]'
+                      : 'border-transparent text-[#94A3B8] hover:text-[#FFFFFF]'
                   }`}
                 >
-                  Network ({report.network.unhealthy_services?.length ?? 0})
+                  <Network className="w-4 h-4" />
+                  <span>Networking</span>
                 </button>
               </div>
 
-              {/* Tab Outputs */}
-              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+              <div className="p-6">
                 {activeTab === 'pods' && (
                   <div className="space-y-4">
-                    {report.pods.success && (!report.pods.problematic_pods || report.pods.problematic_pods.length === 0) ? (
-                      <p className="text-slate-400 text-sm">All pods are running smoothly.</p>
+                    {report.pods?.problematic_pods?.length === 0 ? (
+                      <p className="text-xs text-[#10B981]">All cluster pods report Running status.</p>
                     ) : (
-                      report.pods.problematic_pods?.map((pod, idx) => {
+                      report.pods?.problematic_pods?.map((pod: { name: string; namespace: string; status: string }, idx: number) => {
                         const logKey = `${pod.namespace}/${pod.name}`;
-                        const logReport = report.logs[logKey];
+                        const logReport = report.logs?.[logKey];
                         return (
-                          <div key={idx} className="bg-slate-950/80 border border-slate-850 rounded-2xl p-5 space-y-4">
-                            <div className="flex justify-between items-center border-b border-slate-900 pb-3">
+                          <div key={idx} className="bg-[#070A0F] border border-[#1E293B] rounded-lg p-4 space-y-3">
+                            <div className="flex justify-between items-center border-b border-[#1E293B] pb-2">
                               <div>
-                                <span className="text-xs text-indigo-400 font-bold uppercase font-mono tracking-wider">{pod.namespace}</span>
-                                <h5 className="text-md font-bold">{pod.name}</h5>
+                                <span className="text-[11px] font-mono text-[#38BDF8] block">{pod.namespace}</span>
+                                <h4 className="text-sm font-bold text-[#FFFFFF]">{pod.name}</h4>
                               </div>
-                              <span className="px-3 py-1 rounded-md text-xs font-bold uppercase bg-red-950/30 text-red-400 border border-red-900/20">
+                              <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-[#7F1D1D]/40 text-[#EF4444]">
                                 {pod.status}
                               </span>
                             </div>
 
-                            {logReport && logReport.critical_errors.length > 0 && (
-                              <div className="space-y-2">
-                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wide">Error Highlights</div>
-                                <div className="bg-red-950/5 border border-red-900/10 rounded-lg p-3 space-y-1.5">
-                                  {logReport.critical_errors.map((err, eIdx) => (
-                                    <div key={eIdx} className="text-xs font-mono text-red-300 flex items-start">
-                                      <span className="mr-2 text-red-500">•</span>
-                                      <span>{err}</span>
-                                    </div>
+                            {logReport?.critical_errors?.length > 0 && (
+                              <div className="space-y-1">
+                                <span className="text-[11px] font-semibold text-[#CBD5E1] uppercase">Critical Error Highlight</span>
+                                <div className="bg-[#7F1D1D]/10 border border-[#991B1B]/30 rounded p-2.5 text-xs font-mono text-[#FCA5A5]">
+                                  {logReport.critical_errors.map((err: string, eIdx: number) => (
+                                    <div key={eIdx}>• {err}</div>
                                   ))}
                                 </div>
                               </div>
                             )}
 
-                            {logReport && (
-                              <div className="space-y-2">
-                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wide">Logs (Tail)</div>
-                                <pre className="bg-slate-900 text-slate-300 text-xs font-mono p-4 rounded-lg overflow-x-auto max-h-48 overflow-y-auto border border-slate-850/60 leading-relaxed">
-                                  {logReport.current_logs || "No logs available."}
+                            {logReport?.current_logs && (
+                              <div className="space-y-1">
+                                <span className="text-[11px] font-semibold text-[#CBD5E1] uppercase">Pod Log Tail</span>
+                                <pre className="bg-[#0B0F19] border border-[#1E293B] text-[#CBD5E1] text-xs font-mono p-3 rounded overflow-x-auto max-h-40 leading-relaxed">
+                                  {logReport.current_logs}
                                 </pre>
                               </div>
                             )}
@@ -857,24 +747,24 @@ export default function Home() {
                 )}
 
                 {activeTab === 'deployments' && (
-                  <div className="space-y-4">
-                    {report.deployments.success && (!report.deployments.unhealthy_deployments || report.deployments.unhealthy_deployments.length === 0) ? (
-                      <p className="text-slate-400 text-sm">All deployments are healthy.</p>
+                  <div className="space-y-3">
+                    {report.deployments?.unhealthy_deployments?.length === 0 ? (
+                      <p className="text-xs text-[#10B981]">All deployments match desired replica specs.</p>
                     ) : (
-                      report.deployments.unhealthy_deployments?.map((deploy, idx) => (
-                        <div key={idx} className="bg-slate-950/80 border border-slate-850 rounded-2xl p-5 space-y-3">
-                          <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                      report.deployments?.unhealthy_deployments?.map((deploy: { name: string; namespace: string; ready_replicas: number; desired_replicas: number; reason: string }, idx: number) => (
+                        <div key={idx} className="bg-[#070A0F] border border-[#1E293B] rounded-lg p-4 space-y-2">
+                          <div className="flex justify-between items-center">
                             <div>
-                              <span className="text-xs text-indigo-400 font-bold uppercase font-mono tracking-wider">{deploy.namespace}</span>
-                              <h5 className="text-md font-bold">{deploy.name}</h5>
+                              <span className="text-[11px] font-mono text-[#38BDF8] block">{deploy.namespace}</span>
+                              <h4 className="text-sm font-bold text-[#FFFFFF]">{deploy.name}</h4>
                             </div>
-                            <div className="text-xs text-slate-400 font-mono">
+                            <span className="text-xs font-mono text-[#94A3B8]">
                               Replicas: {deploy.ready_replicas} / {deploy.desired_replicas}
-                            </div>
+                            </span>
                           </div>
-                          <div className="bg-red-950/5 border border-red-900/10 rounded-lg p-3 text-xs text-red-300 leading-relaxed">
+                          <p className="text-xs text-[#FCA5A5] bg-[#7F1D1D]/10 border border-[#991B1B]/30 p-2.5 rounded">
                             {deploy.reason}
-                          </div>
+                          </p>
                         </div>
                       ))
                     )}
@@ -883,49 +773,35 @@ export default function Home() {
 
                 {activeTab === 'events' && (
                   <div className="space-y-3">
-                    {report.events.success && (!report.events.warnings || report.events.warnings.length === 0) ? (
-                      <p className="text-slate-400 text-sm">No warning events logged in the cluster.</p>
+                    {report.events?.warnings?.length === 0 ? (
+                      <p className="text-xs text-[#10B981]">Zero warning events logged across cluster namespaces.</p>
                     ) : (
-                      <div className="border border-slate-850 rounded-2xl overflow-hidden bg-slate-950/60 divide-y divide-slate-850">
-                        {report.events.warnings?.map((event, idx) => (
-                          <div key={idx} className="p-4 hover:bg-slate-900/30 flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-sm">
-                            <div className="space-y-1">
-                              <div className="flex items-center space-x-2">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/50 text-amber-400 border border-amber-900/20 uppercase font-mono">
-                                  {event.reason}
-                                </span>
-                                <span className="text-slate-500 font-mono text-xs">{event.kind}/{event.name}</span>
-                              </div>
-                              <p className="text-slate-300 leading-relaxed text-xs">{event.message}</p>
-                            </div>
-                            <div className="text-right text-xs text-slate-500 shrink-0">
-                              <div>Count: {event.count}</div>
-                              <div className="text-[10px]">{event.last_timestamp ? new Date(event.last_timestamp).toLocaleTimeString() : 'N/A'}</div>
-                            </div>
+                      report.events?.warnings?.map((ev: { reason: string; kind: string; name: string; message: string; count: number }, idx: number) => (
+                        <div key={idx} className="bg-[#070A0F] border border-[#1E293B] rounded-lg p-3 space-y-1 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[#F59E0B] font-semibold">{ev.reason}</span>
+                            <span className="text-[#94A3B8] font-mono">{ev.kind}/{ev.name}</span>
                           </div>
-                        ))}
-                      </div>
+                          <p className="text-[#CBD5E1]">{ev.message}</p>
+                          <div className="text-[10px] text-[#94A3B8]">Occurrence count: {ev.count}</div>
+                        </div>
+                      ))
                     )}
                   </div>
                 )}
 
                 {activeTab === 'network' && (
-                  <div className="space-y-4">
-                    {report.network.success && (!report.network.unhealthy_services || report.network.unhealthy_services.length === 0) ? (
-                      <p className="text-slate-400 text-sm">All service endpoints are healthy.</p>
+                  <div className="space-y-3">
+                    {report.network?.unhealthy_services?.length === 0 ? (
+                      <p className="text-xs text-[#10B981]">All cluster service endpoints are healthy.</p>
                     ) : (
-                      report.network.unhealthy_services?.map((svc, idx) => (
-                        <div key={idx} className="bg-slate-950/80 border border-slate-850 rounded-2xl p-5 space-y-3">
-                          <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                            <div>
-                              <span className="text-xs text-indigo-400 font-bold uppercase font-mono tracking-wider">{svc.namespace}</span>
-                              <h5 className="text-md font-bold">{svc.name}</h5>
-                            </div>
-                            <span className="text-xs font-mono bg-slate-900 text-slate-400 px-2 py-0.5 rounded">{svc.type}</span>
+                      report.network?.unhealthy_services?.map((svc: { name: string; namespace: string; type: string; reason: string }, idx: number) => (
+                        <div key={idx} className="bg-[#070A0F] border border-[#1E293B] rounded-lg p-3 space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-[#FFFFFF]">{svc.name}</span>
+                            <span className="font-mono text-[#94A3B8]">{svc.type}</span>
                           </div>
-                          <div className="bg-red-950/5 border border-red-900/10 rounded-lg p-3 text-xs text-red-300 leading-relaxed">
-                            {svc.reason}
-                          </div>
+                          <p className="text-[#FCA5A5]">{svc.reason}</p>
                         </div>
                       ))
                     )}
@@ -935,13 +811,34 @@ export default function Home() {
             </div>
           )}
 
+          {!showResults && !isPending && (
+            <div className="bg-[#0B0F19] border border-[#1E293B] rounded-lg p-12 text-center space-y-3">
+              <Terminal className="w-8 h-8 text-[#94A3B8] mx-auto" />
+              <h3 className="text-base font-bold text-[#FFFFFF]">Ready for Cluster Diagnostics</h3>
+              <p className="text-xs text-[#94A3B8] max-w-sm mx-auto">
+                Select your target context above and click Run Investigation to gather live telemetry.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="z-10 text-xs text-slate-600 mt-12 pb-6">
-        AI Kubernetes Troubleshooting Agent • Platform Integration
-      </div>
+      {/* Production Footer (No AI badge, strictly compliant) */}
+      <footer className="border-t border-[#1E293B] bg-[#070A0F] py-8 mt-12">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#94A3B8]">
+          <div className="flex items-center space-x-2">
+            <Server className="w-4 h-4 text-[#2563EB]" />
+            <span className="text-[#CBD5E1] font-semibold">DevOps Kubernetes AI Agent</span>
+            <span>© 2026. All rights reserved.</span>
+          </div>
+
+          <div className="flex items-center space-x-6">
+            <Link href="/privacy" className="hover:text-[#FFFFFF] transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="hover:text-[#FFFFFF] transition-colors">Terms of Service</Link>
+            <a href="https://github.com/vishalmore90/DevOps-Kubernetes-AI-Agent" target="_blank" rel="noreferrer" className="hover:text-[#FFFFFF] transition-colors">GitHub Repository</a>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 import sys
+import time
 
 from app.core.config import settings
 from app.api.routes import router as api_router
@@ -54,8 +55,40 @@ init_kubeconfig()
 app = FastAPI(
     title="AI Kubernetes Troubleshooting Agent Backend",
     version="0.1.0",
-    description="Backend orchestration service for AI Kubernetes Troubleshooting Agent"
+    description="Backend orchestration service for AI Kubernetes Troubleshooting Agent",
+    debug=False
 )
+
+# Rate limiting middleware (120 req/min per client IP)
+RATE_LIMIT_WINDOW = 60
+MAX_REQUESTS_PER_WINDOW = 120
+request_timestamps = {}
+
+@app.middleware("http")
+async def security_and_rate_limit(request, call_next):
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    now = time.time()
+    
+    # Prune old timestamps
+    timestamps = [t for t in request_timestamps.get(client_ip, []) if now - t < RATE_LIMIT_WINDOW]
+    if len(timestamps) >= MAX_REQUESTS_PER_WINDOW:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Please wait before making more requests."}
+        )
+    
+    timestamps.append(now)
+    request_timestamps[client_ip] = timestamps
+    
+    response = await call_next(request)
+    # Add Security Headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 # Configure CORS
 app.add_middleware(

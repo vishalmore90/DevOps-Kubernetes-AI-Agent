@@ -78,56 +78,51 @@ function VerifyEmailContent() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 relative overflow-hidden font-sans">
-      {/* Background blur effects */}
-      <div className="absolute top-[-25%] left-[-20%] w-[65%] h-[65%] bg-blue-900/10 rounded-full blur-[140px] pointer-events-none"></div>
-      <div className="absolute bottom-[-25%] right-[-20%] w-[65%] h-[65%] bg-indigo-900/10 rounded-full blur-[140px] pointer-events-none"></div>
-      <div className="absolute top-[40%] left-[35%] w-[30%] h-[30%] bg-violet-900/5 rounded-full blur-[120px] pointer-events-none"></div>
-
-      <div className="z-10 w-full max-w-md bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/50 rounded-3xl p-8 backdrop-blur-xl shadow-[0_0_50px_-12px_rgba(99,102,241,0.15)] space-y-6 transition-all duration-500">
+    <main className="min-h-screen bg-[#070A0F] text-[#F8FAFC] flex items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-md bg-[#0B0F19] border border-[#1E293B] rounded-lg p-8 shadow-2xl space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-300 to-violet-400">
-            Verify email
+          <h1 className="text-3xl font-bold tracking-tight text-[#FFFFFF]">
+            Email Verification
           </h1>
-          <p className="text-xs text-slate-400">
-            Enter the 6-digit code sent to your email
+          <p className="text-sm text-[#94A3B8]">
+            Enter the 6-digit confirmation code sent to your inbox.
           </p>
         </div>
 
         <form onSubmit={handleVerify} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">Email Address</label>
+            <label className="block text-xs font-semibold text-[#CBD5E1] uppercase mb-1 tracking-wider">Email Address</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-950/60 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 rounded-xl px-4 py-3 text-sm text-slate-200 outline-none transition-all duration-350"
+              className="w-full bg-[#070A0F] border border-[#1E293B] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/40 rounded-lg px-4 py-2.5 text-sm text-[#FFFFFF] outline-none transition-colors"
               placeholder="user@example.com"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase mb-1 tracking-wider">6-digit code</label>
+            <label className="block text-xs font-semibold text-[#CBD5E1] uppercase mb-1 tracking-wider">6-Digit Code</label>
             <input
               type="text"
               required
               maxLength={6}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              className="w-full bg-slate-950/60 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 rounded-xl px-4 py-3 text-sm text-slate-200 outline-none transition tracking-widest text-center font-mono transition-all duration-350"
-              placeholder="6-digit code"
+              className="w-full bg-[#070A0F] border border-[#1E293B] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/40 rounded-lg px-4 py-2.5 text-sm text-[#FFFFFF] outline-none tracking-widest text-center font-mono transition-colors"
+              placeholder="000000"
             />
           </div>
 
           {errorMsg && (
-            <p className="text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-2.5 rounded-lg text-center font-semibold">
+            <p className="text-xs text-[#EF4444] bg-[#7F1D1D]/20 border border-[#991B1B]/40 p-2.5 rounded-lg text-center font-medium">
               {errorMsg}
             </p>
           )}
 
           {successMsg && (
-            <p className="text-xs text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 p-2.5 rounded-lg text-center font-semibold">
+            <p className="text-xs text-[#10B981] bg-[#064E3B]/20 border border-[#047857]/40 p-2.5 rounded-lg text-center font-medium">
               {successMsg}
             </p>
           )}
@@ -135,9 +130,9 @@ function VerifyEmailContent() {
           <button
             type="submit"
             disabled={loading || resending}
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-655 hover:from-blue-500 hover:to-indigo-600 text-white font-bold py-3.5 rounded-xl shadow-lg hover:shadow-indigo-500/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm"
+            className="w-full bg-[#2563EB] hover:bg-[#1D4ED8] text-[#FFFFFF] font-medium py-2.5 rounded-lg border border-[#38BDF8]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm"
           >
-            {loading ? 'Verifying...' : 'Verify'}
+            {loading ? 'Verifying...' : 'Verify Code'}
           </button>
         </form>
 
@@ -146,17 +141,17 @@ function VerifyEmailContent() {
             type="button"
             disabled={loading || resending}
             onClick={handleResend}
-            className="text-slate-400 hover:text-white transition underline font-semibold disabled:opacity-50"
+            className="text-[#94A3B8] hover:text-[#FFFFFF] transition-colors underline font-medium disabled:opacity-50"
           >
-            {resending ? 'Resending...' : "Didn't get a code? Resend email"}
+            {resending ? 'Sending...' : "Resend verification code"}
           </button>
           
           <button
             type="button"
             onClick={() => router.push('/')}
-            className="text-indigo-400 hover:text-indigo-300 hover:underline font-semibold transition"
+            className="text-[#38BDF8] hover:text-[#FFFFFF] hover:underline font-medium transition-colors"
           >
-            Back to sign in
+            Return to Sign In
           </button>
         </div>
       </div>

@@ -85,6 +85,7 @@ export interface DiagnosisReport {
   kubectl_command: string;
   prevention: string;
   confidence: number;
+  severity?: string;
 }
 
 export interface InvestigationResponse {

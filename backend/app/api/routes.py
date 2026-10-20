@@ -7,11 +7,32 @@ from app.services.realtime_service import RealtimeService
 from app.ai.agent import run_ai_diagnose
 from app.kubernetes.kubectl_executor import KubectlExecutor
 
+import re
+from pydantic import BaseModel, Field, field_validator
+
 router = APIRouter()
 
 class InvestigateRequest(BaseModel):
-    userId: Optional[str] = None
-    context: Optional[str] = None
+    userId: Optional[str] = Field(None, max_length=128)
+    context: Optional[str] = Field(None, max_length=128)
+
+    @field_validator("context")
+    @classmethod
+    def sanitize_context(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if v and not re.match(r"^[a-zA-Z0-9_\-\.:/@]+$", v):
+                raise ValueError("Invalid Kubernetes context format.")
+        return v
+
+    @field_validator("userId")
+    @classmethod
+    def sanitize_user_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if v and not re.match(r"^[a-zA-Z0-9_\-]+$", v):
+                raise ValueError("Invalid user identifier format.")
+        return v
 
 @router.get("/health")
 async def health_check():
