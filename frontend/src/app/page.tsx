@@ -38,6 +38,12 @@ interface AuthUser {
   emailVerified?: boolean;
 }
 
+const DEFAULT_SANDBOX_CONTEXTS = [
+  'k8s-sandbox-cluster',
+  'k8s-sandbox-oom',
+  'k8s-sandbox-imagepull'
+];
+
 export default function Home() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -97,14 +103,20 @@ export default function Home() {
   useEffect(() => {
     if (user) {
       getContexts().then(({ contexts, current_context, kubeconfig_path }) => {
-        setContexts(contexts || []);
-        setKubeconfigPath(kubeconfig_path || null);
-        if (current_context) {
+        const available = contexts && contexts.length > 0 ? contexts : DEFAULT_SANDBOX_CONTEXTS;
+        setContexts(available);
+        setKubeconfigPath(kubeconfig_path || 'k8s-sandbox-cluster-mode');
+        if (current_context && available.includes(current_context)) {
           setSelectedContext(current_context);
-        } else if (contexts && contexts.length > 0) {
-          setSelectedContext(contexts[0]);
+        } else {
+          setSelectedContext(available[0]);
         }
-      }).catch(err => console.error("Failed to load clusters/contexts:", err));
+      }).catch(err => {
+        console.error("Failed to load clusters/contexts from backend, defaulting to sandbox:", err);
+        setContexts(DEFAULT_SANDBOX_CONTEXTS);
+        setSelectedContext(DEFAULT_SANDBOX_CONTEXTS[0]);
+        setKubeconfigPath('k8s-sandbox-cluster-mode');
+      });
     }
   }, [user]);
 
@@ -112,15 +124,19 @@ export default function Home() {
     if (!user) return;
     try {
       const { contexts, current_context, kubeconfig_path } = await getContexts();
-      setContexts(contexts || []);
-      setKubeconfigPath(kubeconfig_path || null);
-      if (current_context) {
+      const available = contexts && contexts.length > 0 ? contexts : DEFAULT_SANDBOX_CONTEXTS;
+      setContexts(available);
+      setKubeconfigPath(kubeconfig_path || 'k8s-sandbox-cluster-mode');
+      if (current_context && available.includes(current_context)) {
         setSelectedContext(current_context);
-      } else if (contexts && contexts.length > 0) {
-        setSelectedContext(contexts[0]);
+      } else {
+        setSelectedContext(available[0]);
       }
     } catch (err) {
-      console.error("Failed to refresh clusters/contexts:", err);
+      console.error("Failed to refresh clusters/contexts, defaulting to sandbox:", err);
+      setContexts(DEFAULT_SANDBOX_CONTEXTS);
+      setSelectedContext(DEFAULT_SANDBOX_CONTEXTS[0]);
+      setKubeconfigPath('k8s-sandbox-cluster-mode');
     }
   };
 
