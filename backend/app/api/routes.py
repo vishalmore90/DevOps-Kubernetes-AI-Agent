@@ -72,7 +72,10 @@ async def get_contexts():
     sandbox_contexts = [
         "k8s-sandbox-cluster",
         "k8s-sandbox-oom",
-        "k8s-sandbox-imagepull"
+        "k8s-sandbox-imagepull",
+        "k8s-sandbox-service-selector",
+        "k8s-sandbox-liveness-probe",
+        "k8s-sandbox-pending-resources"
     ]
 
     # If no live cluster contexts exist (e.g. Render cloud container without cloud kubeconfig),

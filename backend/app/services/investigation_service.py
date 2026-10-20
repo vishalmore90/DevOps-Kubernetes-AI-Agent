@@ -198,6 +198,208 @@ class InvestigationService:
                 "healthy": True,
                 "unhealthy_services": []
             }
+        elif "selector" in ctx_lower or "network" in ctx_lower:
+            # Scenario: Service Selector Mismatch / Zero Endpoints Incident
+            svc_name = "checkout-api-svc"
+            pod_name = "checkout-api-856c4d79df-x9k2v"
+            namespace = "production"
+            pods = {
+                "success": True,
+                "healthy": True,
+                "total_pods": 5,
+                "running_pods": 5,
+                "failed_pods": 0,
+                "problematic_pods": []
+            }
+            logs = {
+                f"{namespace}/{pod_name}": {
+                    "status": "Running",
+                    "current_logs": (
+                        "2026-10-20T21:30:10Z [INFO] Checkout API v2.1.0 started. Listening on port 8080.\n"
+                        "2026-10-20T21:30:12Z [INFO] Health check endpoints initialized at /healthz.\n"
+                        "2026-10-20T21:30:15Z [INFO] Pod label set to app=checkout-api."
+                    ),
+                    "previous_logs": "",
+                    "critical_errors": []
+                }
+            }
+            events = {
+                "success": True,
+                "warnings": [
+                    {
+                        "namespace": namespace,
+                        "kind": "Service",
+                        "name": svc_name,
+                        "reason": "ZeroEndpoints",
+                        "message": "Service production/checkout-api-svc has no available endpoints. Incoming traffic to port 80 is dropped.",
+                        "count": 24,
+                        "first_timestamp": "2026-10-20T21:10:00Z",
+                        "last_timestamp": "2026-10-20T21:44:00Z"
+                    }
+                ]
+            }
+            deployments = {
+                "success": True,
+                "healthy": True,
+                "unhealthy_deployments": []
+            }
+            network = {
+                "success": True,
+                "healthy": False,
+                "unhealthy_services": [
+                    {
+                        "name": svc_name,
+                        "namespace": namespace,
+                        "type": "ClusterIP",
+                        "selector": {"app": "checkout-api-v2"},
+                        "reason": "NoEndpoints: Service selector {'app': 'checkout-api-v2'} does not match any running pod. Pod labels are {'app': 'checkout-api'}."
+                    }
+                ]
+            }
+        elif "probe" in ctx_lower or "liveness" in ctx_lower:
+            # Scenario: Liveness Probe Timeout / Continuous Restarts
+            pod_name = "order-processor-7bb894d584-p4nm2"
+            namespace = "production"
+            pods = {
+                "success": True,
+                "healthy": False,
+                "total_pods": 6,
+                "running_pods": 5,
+                "failed_pods": 1,
+                "problematic_pods": [
+                    {
+                        "name": pod_name,
+                        "namespace": namespace,
+                        "status": "CrashLoopBackOff",
+                        "phase": "Running"
+                    }
+                ]
+            }
+            logs = {
+                f"{namespace}/{pod_name}": {
+                    "status": "CrashLoopBackOff",
+                    "current_logs": (
+                        "2026-10-20T21:35:10Z [INFO] Worker started. High database sync load detected.\n"
+                        "2026-10-20T21:35:25Z [WARN] /healthz endpoint blocked by heavy queue synchronization.\n"
+                        "2026-10-20T21:35:30Z [FATAL] Received SIGTERM from kubelet (liveness probe failed: context deadline exceeded)"
+                    ),
+                    "previous_logs": (
+                        "2026-10-20T21:34:10Z [WARN] Healthcheck deadline exceeded after 2000ms.\n"
+                        "2026-10-20T21:34:15Z [FATAL] Container order-processor killed by liveness failure."
+                    ),
+                    "critical_errors": [
+                        "Received SIGTERM from kubelet (liveness probe failed: context deadline exceeded)",
+                        "Container order-processor killed by liveness failure."
+                    ]
+                }
+            }
+            events = {
+                "success": True,
+                "warnings": [
+                    {
+                        "namespace": namespace,
+                        "kind": "Pod",
+                        "name": pod_name,
+                        "reason": "Unhealthy",
+                        "message": 'Liveness probe failed: Get "http://10.244.1.44:8080/healthz": context deadline exceeded (Client.Timeout exceeded while awaiting headers)',
+                        "count": 21,
+                        "first_timestamp": "2026-10-20T21:15:00Z",
+                        "last_timestamp": "2026-10-20T21:45:00Z"
+                    },
+                    {
+                        "namespace": namespace,
+                        "kind": "Pod",
+                        "name": pod_name,
+                        "reason": "Killing",
+                        "message": "Container order-processor failed liveness probe, will be restarted",
+                        "count": 21,
+                        "first_timestamp": "2026-10-20T21:15:05Z",
+                        "last_timestamp": "2026-10-20T21:45:05Z"
+                    }
+                ]
+            }
+            deployments = {
+                "success": True,
+                "healthy": False,
+                "unhealthy_deployments": [
+                    {
+                        "name": "order-processor",
+                        "namespace": namespace,
+                        "desired_replicas": 3,
+                        "ready_replicas": 2,
+                        "unavailable_replicas": 1,
+                        "reason": "ReplicaMismatch: desired=3, ready=2, unavailable=1 (Continuous probe failure on order-processor-7bb894d584-p4nm2)"
+                    }
+                ]
+            }
+            network = {
+                "success": True,
+                "healthy": True,
+                "unhealthy_services": []
+            }
+        elif "pending" in ctx_lower or "resource" in ctx_lower or "schedule" in ctx_lower:
+            # Scenario: FailedScheduling / Insufficient CPU Incident
+            pod_name = "ml-inference-engine-69f8c6797-2kz9x"
+            namespace = "ai-workloads"
+            pods = {
+                "success": True,
+                "healthy": False,
+                "total_pods": 4,
+                "running_pods": 3,
+                "failed_pods": 1,
+                "problematic_pods": [
+                    {
+                        "name": pod_name,
+                        "namespace": namespace,
+                        "status": "Pending",
+                        "phase": "Pending"
+                    }
+                ]
+            }
+            logs = {
+                f"{namespace}/{pod_name}": {
+                    "status": "Pending",
+                    "current_logs": "Pod is in Pending state. Container ml-engine has not been scheduled to any cluster node.",
+                    "previous_logs": "",
+                    "critical_errors": [
+                        "0/4 nodes are available: 4 Insufficient cpu."
+                    ]
+                }
+            }
+            events = {
+                "success": True,
+                "warnings": [
+                    {
+                        "namespace": namespace,
+                        "kind": "Pod",
+                        "name": pod_name,
+                        "reason": "FailedScheduling",
+                        "message": "0/4 nodes are available: 4 Insufficient cpu. preemption: 0/4 nodes are available: 4 No preemption victims found for incoming pod.",
+                        "count": 32,
+                        "first_timestamp": "2026-10-20T21:10:00Z",
+                        "last_timestamp": "2026-10-20T21:45:00Z"
+                    }
+                ]
+            }
+            deployments = {
+                "success": True,
+                "healthy": False,
+                "unhealthy_deployments": [
+                    {
+                        "name": "ml-inference-engine",
+                        "namespace": namespace,
+                        "desired_replicas": 2,
+                        "ready_replicas": 1,
+                        "unavailable_replicas": 1,
+                        "reason": "RolloutBlocked: Pod ml-inference-engine-69f8c6797-2kz9x stuck in Pending (Insufficient CPU on all worker nodes)"
+                    }
+                ]
+            }
+            network = {
+                "success": True,
+                "healthy": True,
+                "unhealthy_services": []
+            }
         else:
             # Default Scenario: CrashLoopBackOff (Missing database password secret)
             pod_name = "payment-service-7bb89c6874-9k2xz"

@@ -41,7 +41,10 @@ interface AuthUser {
 const DEFAULT_SANDBOX_CONTEXTS = [
   'k8s-sandbox-cluster',
   'k8s-sandbox-oom',
-  'k8s-sandbox-imagepull'
+  'k8s-sandbox-imagepull',
+  'k8s-sandbox-service-selector',
+  'k8s-sandbox-liveness-probe',
+  'k8s-sandbox-pending-resources'
 ];
 
 export default function Home() {
@@ -497,6 +500,9 @@ export default function Home() {
                         if (ctx === 'k8s-sandbox-cluster') label = 'k8s-sandbox-cluster (CrashLoopBackOff Incident)';
                         else if (ctx === 'k8s-sandbox-oom') label = 'k8s-sandbox-oom (OOMKilled Incident)';
                         else if (ctx === 'k8s-sandbox-imagepull') label = 'k8s-sandbox-imagepull (ImagePullBackOff Incident)';
+                        else if (ctx === 'k8s-sandbox-service-selector') label = 'k8s-sandbox-service-selector (Zero Endpoints Incident)';
+                        else if (ctx === 'k8s-sandbox-liveness-probe') label = 'k8s-sandbox-liveness-probe (Probe Timeout Incident)';
+                        else if (ctx === 'k8s-sandbox-pending-resources') label = 'k8s-sandbox-pending-resources (FailedScheduling Incident)';
                         return (
                           <option key={ctx} value={ctx}>
                             {label}

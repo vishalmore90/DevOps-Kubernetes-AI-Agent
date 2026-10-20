@@ -52,18 +52,29 @@ def test_realtime_progress_publish():
     assert result is True
 
 def test_sandbox_investigation():
-    """Verify InvestigationService correctly produces sandbox telemetry for k8s-sandbox-cluster."""
+    """Verify InvestigationService correctly produces sandbox telemetry for all scenarios."""
     from app.services.investigation_service import InvestigationService
-    evidence = InvestigationService.run_investigation(context="k8s-sandbox-cluster")
-    assert "pods" in evidence
-    assert "logs" in evidence
-    assert "events" in evidence
-    assert "deployments" in evidence
-    assert "network" in evidence
-    assert evidence["pods"]["success"] is True
-    assert evidence["pods"]["healthy"] is False
-    assert len(evidence["pods"]["problematic_pods"]) > 0
-    assert "payment-service" in evidence["pods"]["problematic_pods"][0]["name"]
+    
+    # 1. CrashLoopBackOff
+    ev_crash = InvestigationService.run_investigation(context="k8s-sandbox-cluster")
+    assert ev_crash["pods"]["healthy"] is False
+    assert "payment-service" in ev_crash["pods"]["problematic_pods"][0]["name"]
+
+    # 2. Service Selector
+    ev_svc = InvestigationService.run_investigation(context="k8s-sandbox-service-selector")
+    assert ev_svc["network"]["healthy"] is False
+    assert len(ev_svc["network"]["unhealthy_services"]) > 0
+    assert "checkout-api-svc" in ev_svc["network"]["unhealthy_services"][0]["name"]
+
+    # 3. Liveness Probe
+    ev_probe = InvestigationService.run_investigation(context="k8s-sandbox-liveness-probe")
+    assert ev_probe["pods"]["healthy"] is False
+    assert "order-processor" in ev_probe["pods"]["problematic_pods"][0]["name"]
+
+    # 4. Pending / FailedScheduling
+    ev_pending = InvestigationService.run_investigation(context="k8s-sandbox-pending-resources")
+    assert ev_pending["pods"]["problematic_pods"][0]["status"] == "Pending"
+    assert "ml-inference-engine" in ev_pending["pods"]["problematic_pods"][0]["name"]
 
 def test_investigate_sandbox_endpoint():
     """Verify /investigate endpoint works with sandbox context and AI reasoning."""
